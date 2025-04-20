@@ -25,7 +25,7 @@ A vibrant, interactive web app for sharing, searching, and discovering recipes! 
 ### 1. Clone the repository
 ```bash
 git clone <your-repo-url>
-cd demo-app
+cd share-my-recipe
 ```
 
 ### 2. Install dependencies
@@ -61,26 +61,6 @@ The app will be running at [http://localhost:3000](http://localhost:3000)
 ![Recipes Page](docs/recipes-page-screenshot.png)
 
 *Replace the above images with your own screenshots in the `docs/` folder for best results!*
-
----
-
-## 📝 Project Structure
-```
-/ingredients_data.csv
-/liquibase-changelog.xml
-/liquibase.properties
-/package.json
-/recipe_ingredients_data.csv
-/recipe_instructions_data.csv
-/recipes_data.csv
-/tsconfig.json
-/src/
-  index.ts
-  views/
-    index.ejs
-    recipes.ejs
-    search.ejs
-```
 
 ---
 
