@@ -1,0 +1,39 @@
+classDiagram
+    %% Define classes
+    class users {
+        +VARCHAR(36) id [PK]
+        +VARCHAR(255) username [UNIQUE]
+        +VARCHAR(255) email [UNIQUE]
+        +VARCHAR(255) password
+    }
+    
+    class recipes {
+        +VARCHAR(36) id [PK]
+        +VARCHAR(255) title
+        +TEXT description
+        +VARCHAR(36) user_id [FK]
+        +VARCHAR(36) category_id [FK]
+        +TEXT instructions
+    }
+    
+    class ingredients {
+        +VARCHAR(36) id [PK]
+        +VARCHAR(255) name
+    }
+    
+    class recipe_ingredients {
+        +VARCHAR(36) recipe_id [FK]
+        +VARCHAR(36) ingredient_id [FK]
+        +VARCHAR(50) quantity
+    }
+    
+    class categories {
+        +VARCHAR(36) id [PK]
+        +VARCHAR(255) name [UNIQUE]
+    }
+    
+    %% Define relationships
+    users "1" <-- "*" recipes : created by
+    categories "0..1" <-- "*" recipes : belongs to
+    recipes "1" <-- "*" recipe_ingredients : contains
+    ingredients "1" <-- "*" recipe_ingredients : used in

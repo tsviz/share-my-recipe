@@ -15,6 +15,14 @@ A vibrant, interactive web app for sharing, searching, and discovering recipes! 
 - Food-themed animated backgrounds and emoji effects
 - Modern, responsive design
 
+## 📊 Database Schema
+
+The application uses a PostgreSQL database with the following structure:
+
+![Database Schema](docs/classDiagram.png)
+
+> **Note**: View the complete database schema in the [classDiagram.mmd](classDiagram.mmd) file. You can render this file using any Mermaid-compatible viewer.
+
 ## 🚀 Getting Started
 
 ### Prerequisites
