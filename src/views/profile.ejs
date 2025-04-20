@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= user.username %>'s Profile - Recipe Sharing</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .profile-header {
+            background-image: url('https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1500&q=80');
+            background-size: cover;
+            background-position: center;
+            height: 200px;
+            position: relative;
+            border-radius: 0.5rem;
+            margin-bottom: 60px;
+        }
+        .profile-img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            position: absolute;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #fff;
+            object-fit: cover;
+        }
+        .profile-info {
+            text-align: center;
+            padding-top: 70px;
+        }
+        .recipe-card {
+            border-radius: 1rem;
+            overflow: hidden;
+            transition: transform 0.3s;
+            height: 100%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .recipe-card:hover {
+            transform: translateY(-5px);
+        }
+        .recipe-img {
+            height: 180px;
+            object-fit: cover;
+        }
+        .btn-main {
+            background: linear-gradient(90deg, #ffb347 0%, #ffcc33 100%);
+            color: #fff;
+            border: none;
+            box-shadow: 0 2px 8px rgba(255, 140, 0, 0.15);
+            transition: all 0.2s;
+        }
+        .btn-main:hover {
+            background: linear-gradient(90deg, #ffcc33 0%, #ffb347 100%);
+            transform: translateY(-1px);
+        }
+        .btn-outline-main {
+            color: #ff8c00;
+            border-color: #ff8c00;
+        }
+        .btn-outline-main:hover {
+            background-color: #ff8c00;
+            color: #fff;
+        }
+        .stats-container {
+            background-color: #fff;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: bold;
+            color: #ff8c00;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .recipe-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 1rem;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5 mb-5">
+        <!-- Profile Header -->
+        <div class="profile-header">
+            <% if (user.profile_image) { %>
+                <img src="<%= user.profile_image %>" alt="<%= user.username %>" class="profile-img">
+            <% } else { %>
+                <div class="profile-img d-flex align-items-center justify-content-center">
+                    <i class="bi bi-person-fill" style="font-size: 3rem; color: #ccc;"></i>
+                </div>
+            <% } %>
+        </div>
+        
+        <!-- Profile Info -->
+        <div class="profile-info mb-4">
+            <h2><%= user.username %></h2>
+            <% if (user.bio) { %>
+                <p class="text-muted"><%= user.bio %></p>
+            <% } else { %>
+                <p class="text-muted">No bio provided</p>
+            <% } %>
+            <p><small>Member since <%= new Date(user.created_at).toLocaleDateString() %></small></p>
+            
+            <% if (isOwnProfile) { %>
+                <a href="/profile/edit" class="btn btn-outline-main btn-sm">
+                    <i class="bi bi-pencil"></i> Edit Profile
+                </a>
+            <% } %>
+        </div>
+        
+        <!-- User Stats -->
+        <div class="stats-container mb-4">
+            <div class="row">
+                <div class="col-4 stat-item">
+                    <div class="stat-value"><%= recipes.length %></div>
+                    <div class="stat-label">RECIPES</div>
+                </div>
+                <div class="col-4 stat-item">
+                    <div class="stat-value"><%= favoriteCount || 0 %></div>
+                    <div class="stat-label">FAVORITES</div>
+                </div>
+                <div class="col-4 stat-item">
+                    <div class="stat-value"><%= viewCount || 0 %></div>
+                    <div class="stat-label">RECIPE VIEWS</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- User's Recipes -->
+        <h3 class="mb-4"><%= user.username %>'s Recipes</h3>
+        
+        <% if (recipes.length === 0) { %>
+            <div class="alert alert-light text-center">
+                <p>No recipes shared yet!</p>
+                <% if (isOwnProfile) { %>
+                    <a href="/recipes/new" class="btn btn-main btn-sm">Create Your First Recipe</a>
+                <% } %>
+            </div>
+        <% } else { %>
+            <div class="row row-cols-1 row-cols-md-2 row-cols-lg-3 g-4">
+                <% recipes.forEach(recipe => { %>
+                    <div class="col">
+                        <div class="card recipe-card h-100">
+                            <div class="position-relative">
+                                <img src="https://source.unsplash.com/random/300x200/?<%= encodeURIComponent(recipe.title.split(' ')[0]) %>,food" class="card-img-top recipe-img" alt="<%= recipe.title %>">
+                                <% if (recipe.category_id) { %>
+                                    <div class="recipe-badge"><%= recipe.category_name || 'Uncategorized' %></div>
+                                <% } %>
+                            </div>
+                            <div class="card-body">
+                                <h5 class="card-title"><%= recipe.title %></h5>
+                                <p class="card-text"><%= recipe.description ? recipe.description.substring(0, 100) + '...' : 'No description provided.' %></p>
+                            </div>
+                            <div class="card-footer bg-white border-top-0">
+                                <a href="/recipes/<%= recipe.id %>" class="btn btn-outline-main btn-sm">View Recipe</a>
+                                <% if (isOwnProfile) { %>
+                                    <a href="/recipes/edit/<%= recipe.id %>" class="btn btn-outline-secondary btn-sm ms-1">
+                                        <i class="bi bi-pencil"></i>
+                                    </a>
+                                <% } %>
+                            </div>
+                        </div>
+                    </div>
+                <% }) %>
+            </div>
+        <% } %>
+        
+        <div class="text-center mt-5">
+            <a href="/" class="btn btn-outline-secondary">Back to Home</a>
+        </div>
+    </div>
+</body>
+</html>

@@ -11,14 +11,24 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "body-parser": "^2.2.0",
+    "connect-flash": "^0.1.1",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
+    "express-session": "^1.18.1",
+    "passport": "^0.7.0",
+    "passport-local": "^1.0.0",
     "pg": "^8.14.1"
   },
   "devDependencies": {
+    "@types/bcrypt": "^5.0.2",
+    "@types/connect-flash": "^0.0.40",
     "@types/express": "^5.0.1",
+    "@types/express-session": "^1.18.1",
     "@types/node": "^22.14.1",
+    "@types/passport": "^1.0.17",
+    "@types/passport-local": "^1.0.38",
     "@types/pg": "^8.11.13",
     "ts-node": "^10.9.2",
     "typescript": "^5.8.3"

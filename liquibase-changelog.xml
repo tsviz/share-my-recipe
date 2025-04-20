@@ -309,4 +309,51 @@
             primaryKey="id"/>
     </changeSet>
 
+    <!-- Authentication System - Add Date: April 20, 2025 -->
+    <changeSet id="4" author="app-developer">
+        <!-- Add created_at and last_login to users table -->
+        <addColumn tableName="users">
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_login" type="TIMESTAMP"/>
+            <column name="profile_image" type="VARCHAR(255)"/>
+            <column name="bio" type="TEXT"/>
+        </addColumn>
+        
+        <!-- Create sessions table for persistent logins -->
+        <createTable tableName="sessions">
+            <column name="id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_session_user" references="users(id)"/>
+            </column>
+            <column name="data" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <!-- Create favorites table for saving favorite recipes -->
+        <createTable tableName="favorites">
+            <column name="id" type="VARCHAR(36)" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_favorite_user" references="users(id)"/>
+            </column>
+            <column name="recipe_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_favorite_recipe" references="recipes(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="favorites" columnNames="user_id,recipe_id" constraintName="unique_user_recipe_favorite"/>
+    </changeSet>
+
 </databaseChangeLog>
