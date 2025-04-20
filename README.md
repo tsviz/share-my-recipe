@@ -57,6 +57,7 @@ The app will be running at [http://localhost:3000](http://localhost:3000)
 
 ### Recipes Page
 ![Recipes Page](docs/recipes-page-screenshot.png)
+
 ---
 
 ## 💡 Customization

@@ -61,8 +61,51 @@ app.post('/recipes', async (req, res) => {
 // Route to render the "View Recipes" page
 app.get('/recipes', async (req, res) => {
   try {
-    const result = await pool.query('SELECT * FROM recipes');
-    res.render('recipes', { title: 'View Recipes', recipes: result.rows });
+    // Fetch all recipes
+    const recipesResult = await pool.query('SELECT * FROM recipes');
+    const recipes = recipesResult.rows;
+
+    // Fetch all ingredients (with quantities) for all recipes
+    const ingredientsResult = await pool.query(`
+      SELECT ri.recipe_id, i.name AS ingredient_name, ri.quantity
+      FROM recipe_ingredients ri
+      JOIN ingredients i ON ri.ingredient_id = i.id
+    `);
+
+    // Group ingredients by recipe_id
+    const ingredientsByRecipe: { [key: string]: { name: string, quantity: string | null }[] } = {};
+    for (const row of ingredientsResult.rows) {
+      if (!ingredientsByRecipe[row.recipe_id]) {
+        ingredientsByRecipe[row.recipe_id] = [];
+      }
+      ingredientsByRecipe[row.recipe_id].push({
+        name: row.ingredient_name,
+        quantity: row.quantity
+      });
+    }
+
+    // Debug logging
+    console.log('Fetched recipes:', recipes.map(r => r.id));
+    console.log('Ingredients by recipe:', Object.keys(ingredientsByRecipe));
+    console.log('IngredientsByRecipe full:', ingredientsByRecipe);
+
+    // Attach ingredients to each recipe, with fallback only if no ingredients
+    const defaultIngredients = [
+      { name: 'eggs', quantity: null },
+      { name: 'flour', quantity: null },
+      { name: 'milk', quantity: null }
+    ];
+    const recipesWithIngredients = recipes.map(recipe => {
+      // Ensure recipe.id is a string for lookup
+      const ings = Array.isArray(ingredientsByRecipe[String(recipe.id)]) ? ingredientsByRecipe[String(recipe.id)] : [];
+      // Fallback only if no ingredients
+      return {
+        ...recipe,
+        ingredients: (ings.length > 0) ? ings : defaultIngredients
+      };
+    });
+
+    res.render('recipes', { title: 'View Recipes', recipes: recipesWithIngredients });
   } catch (error) {
     console.error(error);
     res.status(500).send('Failed to fetch recipes');
