@@ -45,11 +45,11 @@ app.post('/users/register', async (req, res) => {
 
 // Route to add a new recipe
 app.post('/recipes', async (req, res) => {
-  const { title, description, userId } = req.body;
+  const { title, description, userId, instructions } = req.body;
   try {
     const result = await pool.query(
-      'INSERT INTO recipes (id, title, description, user_id) VALUES (gen_random_uuid(), $1, $2, $3) RETURNING id',
-      [title, description, userId]
+      'INSERT INTO recipes (id, title, description, user_id, instructions) VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id',
+      [title, description, userId, instructions]
     );
     res.status(201).json({ recipeId: result.rows[0].id });
   } catch (error) {

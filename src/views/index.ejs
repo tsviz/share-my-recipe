@@ -5,13 +5,82 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background-image: url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?auto=format&fit=crop&w=1500&q=80');
+            background-size: cover;
+            background-attachment: fixed;
+            background-repeat: no-repeat;
+            min-height: 100vh;
+            position: relative;
+        }
+        .food-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100vw; height: 100vh;
+            pointer-events: none;
+            z-index: 0;
+        }
+        .food-emoji {
+            position: absolute;
+            font-size: 2.5rem;
+            opacity: 0.7;
+            animation: float 8s linear infinite;
+        }
+        @keyframes float {
+            0% { transform: translateY(100vh) scale(1) rotate(0deg); }
+            100% { transform: translateY(-10vh) scale(1.2) rotate(360deg); }
+        }
+        .main-title {
+            color: #ff7043;
+            text-shadow: 2px 2px 12px #fff8e1;
+            font-size: 3rem;
+            font-weight: bold;
+        }
+        .btn-main {
+            background: linear-gradient(90deg, #ffb347 0%, #ffcc33 100%);
+            color: #fff;
+            border: none;
+            box-shadow: 0 2px 8px rgba(255, 140, 0, 0.15);
+            transition: background 0.2s;
+        }
+        .btn-main:hover {
+            background: linear-gradient(90deg, #ffcc33 0%, #ffb347 100%);
+        }
+        .btn-secondary {
+            background: #ff7043;
+            color: #fff;
+            border: none;
+        }
+        .btn-secondary:hover {
+            background: #ffab91;
+            color: #fff;
+        }
+    </style>
+    <script>
+        // Food emoji rain effect
+        document.addEventListener('DOMContentLoaded', function() {
+            const foodEmojis = ['🍕','🍔','🍣','🍜','🍩','🍦','🍉','🍇','🍓','🍤','🥑','🥕','🍅','🍞','🥨','🍟','🍪','🍰','🍎','🍗','🍳'];
+            const overlay = document.createElement('div');
+            overlay.className = 'food-overlay';
+            for (let i = 0; i < 18; i++) {
+                const emoji = document.createElement('div');
+                emoji.className = 'food-emoji';
+                emoji.style.left = Math.random() * 100 + 'vw';
+                emoji.style.top = Math.random() * 100 + 'vh';
+                emoji.style.animationDelay = (Math.random() * 8) + 's';
+                emoji.textContent = foodEmojis[Math.floor(Math.random() * foodEmojis.length)];
+                overlay.appendChild(emoji);
+            }
+            document.body.appendChild(overlay);
+        });
+    </script>
 </head>
 <body>
     <div class="container mt-5">
-        <h1 class="text-center"><%= title %></h1>
+        <h1 class="text-center mb-4 main-title"><%= title %></h1>
         <p class="text-center">Welcome to the Recipe Sharing Platform! Share, search, and save your favorite recipes.</p>
         <div class="text-center mt-4">
-            <a href="/recipes" class="btn btn-primary">View Recipes</a>
+            <a href="/recipes" class="btn btn-main me-2">View Recipes</a>
             <a href="/recipes/search" class="btn btn-secondary">Search Recipes</a>
         </div>
     </div>

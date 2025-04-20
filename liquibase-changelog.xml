@@ -280,13 +280,26 @@
         </insert>
     </changeSet>
 
-    <changeSet id="3" author="system">
+    <changeSet id="3" author="system" runOnChange="true">
         <loadData file="recipes_data.csv" tableName="recipes" separator=","/>
     </changeSet>
 
-    <changeSet id="9" author="system">
+    <changeSet id="9" author="system" runOnChange="true">
         <loadData file="ingredients_data.csv" tableName="ingredients" separator=","/>
         <loadData file="recipe_ingredients_data.csv" tableName="recipe_ingredients" separator=","/>
+    </changeSet>
+
+    <!-- Add instructions column to recipes table -->
+    <changeSet id="10" author="system">
+        <addColumn tableName="recipes">
+            <column name="instructions" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <!-- Load instructions data from CSV -->
+    <changeSet id="11" author="system" runOnChange="true">
+        <loadUpdateData file="recipe_instructions_data.csv" tableName="recipes" separator=","
+            primaryKey="id"/>
     </changeSet>
 
 </databaseChangeLog>
