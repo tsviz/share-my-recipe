@@ -4,7 +4,9 @@ A vibrant, interactive web app for sharing, searching, and discovering recipes! 
 
 ---
 
-![Landing Page Screenshot](docs/landing-page-screenshot.png)
+![Landing Page](docs/landing-page-screenshot.png)
+
+![Recipies Page](docs/recipes-page-screenshot.png)
 
 ---
 
@@ -19,16 +21,14 @@ A vibrant, interactive web app for sharing, searching, and discovering recipes! 
 
 The application uses a PostgreSQL database with the following structure:
 
-![Database Schema](docs/classDiagram.png)
-
-> **Note**: View the complete database schema in the [classDiagram.mmd](classDiagram.mmd) file. You can render this file using any Mermaid-compatible viewer.
+<img src="docs/classDiagram.png" width="400" alt="Database Schema">
 
 ## 🚀 Getting Started
 
 ### Prerequisites
 - Node.js (v18+ recommended)
 - PostgreSQL (v15+ recommended)
-- [Liquibase](https://www.liquibase.org/) (for database migrations)
+- [Liquibase](https://www.liquibase.com/community) (for database migrations)
 
 ### 1. Clone the repository
 ```bash
@@ -57,14 +57,6 @@ npm start
 ```
 
 The app will be running at [http://localhost:3000](http://localhost:3000)
-
----
-
-### Landing Page
-![Landing Page](docs/landing-page-screenshot.png)
-
-### Recipes Page
-![Recipes Page](docs/recipes-page-screenshot.png)
 
 ---
 

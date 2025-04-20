@@ -124,14 +124,51 @@ app.post('/recipes/search', async (req, res) => {
     return res.render('search', { title: 'Search Recipes', recipes: [] });
   }
   try {
-    const result = await pool.query(
-      `SELECT r.* FROM recipes r
+    // First, find recipes that match the ingredient
+    const recipesResult = await pool.query(
+      `SELECT DISTINCT r.* FROM recipes r
        JOIN recipe_ingredients ri ON r.id = ri.recipe_id
        JOIN ingredients i ON ri.ingredient_id = i.id
        WHERE i.name ILIKE $1`,
       [`%${ingredient}%`]
     );
-    res.render('search', { title: 'Search Recipes', recipes: result.rows });
+    
+    const recipes = recipesResult.rows;
+    
+    if (recipes.length === 0) {
+      return res.render('search', { title: 'Search Results', recipes: [] });
+    }
+    
+    // Get recipe IDs for the second query
+    const recipeIds = recipes.map(r => r.id);
+    
+    // Now fetch all ingredients for these recipes
+    const ingredientsResult = await pool.query(`
+      SELECT ri.recipe_id, i.name AS ingredient_name, ri.quantity
+      FROM recipe_ingredients ri
+      JOIN ingredients i ON ri.ingredient_id = i.id
+      WHERE ri.recipe_id = ANY($1)
+    `, [recipeIds]);
+    
+    // Group ingredients by recipe_id
+    const ingredientsByRecipe: { [key: string]: { name: string, quantity: string | null }[] } = {};
+    for (const row of ingredientsResult.rows) {
+      if (!ingredientsByRecipe[row.recipe_id]) {
+        ingredientsByRecipe[row.recipe_id] = [];
+      }
+      ingredientsByRecipe[row.recipe_id].push({
+        name: row.ingredient_name,
+        quantity: row.quantity
+      });
+    }
+    
+    // Attach ingredients to each recipe
+    const recipesWithIngredients = recipes.map(recipe => ({
+      ...recipe,
+      ingredients: ingredientsByRecipe[recipe.id] || []
+    }));
+    
+    res.render('search', { title: 'Search Results', recipes: recipesWithIngredients });
   } catch (error) {
     console.error(error);
     res.status(500).send('Failed to search recipes');
