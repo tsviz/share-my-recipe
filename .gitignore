@@ -1,0 +1,31 @@
+# Node
+node_modules/
+dist/
+
+# Environment
+.env
+.env.*
+
+# Logs
+*.log
+
+# macOS
+.DS_Store
+
+# Liquibase
+liquibase.log
+liquibase.*.log
+liquibase.properties
+
+# VSCode
+.vscode/
+
+# TypeScript
+*.tsbuildinfo
+
+# Coverage
+coverage/
+
+# Misc
+*.swp
+*.swo
