@@ -52,16 +52,11 @@ The app will be running at [http://localhost:3000](http://localhost:3000)
 
 ---
 
-## 📸 Screenshots
-
 ### Landing Page
 ![Landing Page](docs/landing-page-screenshot.png)
 
 ### Recipes Page
 ![Recipes Page](docs/recipes-page-screenshot.png)
-
-*Replace the above images with your own screenshots in the `docs/` folder for best results!*
-
 ---
 
 ## 💡 Customization
