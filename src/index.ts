@@ -18,8 +18,8 @@ const port = 3000;
 const pool = new Pool({
   user: 'postgres',
   host: 'localhost',
-  database: 'postgres',
-  password: 'yourpassword',
+  database: 'mydb',
+  password: 'mypassword',
   port: 5432,
 });
 
@@ -47,9 +47,16 @@ configurePassport(passport, pool);
 
 // Make flash messages and user available to all templates
 app.use((req, res, next) => {
-  res.locals.messages = req.flash();
+  if (!req.user) {
+    console.log('Debug: req.user is undefined, waiting for deserialization');
+    res.locals.isAuthenticated = false;
+    res.locals.messages = req.flash() || {};
+    return next();
+  }
+  console.log('Debug: Setting res.locals.user after deserialization =', req.user);
   res.locals.user = req.user;
   res.locals.isAuthenticated = req.isAuthenticated();
+  res.locals.messages = req.flash() || {};
   next();
 });
 
@@ -163,6 +170,57 @@ app.get('/profile', isAuthenticated, (req, res) => {
   res.redirect(`/profile/${(req.user as any).id}`);
 });
 
+app.get('/profile/edit', isAuthenticated, (req, res) => {
+  console.log('Debug: req.user =', req.user);
+  console.log('Debug: req.user in /profile/edit =', req.user);
+  if (!req.user) {
+    console.log('Debug: req.user is still undefined in /profile/edit');
+    req.flash('error', 'User not found');
+    return res.redirect('/login');
+  }
+  res.render('edit-profile', { user: req.user });
+});
+
+app.post('/profile/edit', isAuthenticated, async (req, res) => {
+  try {
+    const user = req.user as any;
+    const { username, bio, currentPassword, newPassword, confirmPassword } = req.body;
+    
+    // Update profile info
+    const profileUpdated = await updateUserProfile(pool, user.id, username, bio);
+    
+    if (!profileUpdated) {
+      req.flash('error', 'Failed to update profile');
+      return res.redirect('/profile/edit');
+    }
+    
+    // Change password if provided
+    if (currentPassword && newPassword) {
+      if (newPassword !== confirmPassword) {
+        req.flash('error', 'New passwords do not match');
+        return res.redirect('/profile/edit');
+      }
+      
+      const passwordResult = await changeUserPassword(pool, user.id, currentPassword, newPassword);
+      
+      if (!passwordResult.success) {
+        req.flash('error', passwordResult.message);
+        return res.redirect('/profile/edit');
+      }
+      
+      req.flash('success', 'Profile and password updated successfully');
+    } else {
+      req.flash('success', 'Profile updated successfully');
+    }
+    
+    res.redirect('/profile');
+  } catch (error) {
+    console.error(error);
+    req.flash('error', 'An error occurred while updating your profile');
+    res.redirect('/profile/edit');
+  }
+});
+
 app.get('/profile/:userId', async (req, res) => {
   try {
     const { userId } = req.params;
@@ -209,50 +267,6 @@ app.get('/profile/:userId', async (req, res) => {
     console.error(error);
     req.flash('error', 'Failed to load profile');
     res.redirect('/');
-  }
-});
-
-app.get('/profile/edit', isAuthenticated, (req, res) => {
-  res.render('edit-profile', { user: req.user });
-});
-
-app.post('/profile/edit', isAuthenticated, async (req, res) => {
-  try {
-    const user = req.user as any;
-    const { username, bio, currentPassword, newPassword, confirmPassword } = req.body;
-    
-    // Update profile info
-    const profileUpdated = await updateUserProfile(pool, user.id, username, bio);
-    
-    if (!profileUpdated) {
-      req.flash('error', 'Failed to update profile');
-      return res.redirect('/profile/edit');
-    }
-    
-    // Change password if provided
-    if (currentPassword && newPassword) {
-      if (newPassword !== confirmPassword) {
-        req.flash('error', 'New passwords do not match');
-        return res.redirect('/profile/edit');
-      }
-      
-      const passwordResult = await changeUserPassword(pool, user.id, currentPassword, newPassword);
-      
-      if (!passwordResult.success) {
-        req.flash('error', passwordResult.message);
-        return res.redirect('/profile/edit');
-      }
-      
-      req.flash('success', 'Profile and password updated successfully');
-    } else {
-      req.flash('success', 'Profile updated successfully');
-    }
-    
-    res.redirect('/profile');
-  } catch (error) {
-    console.error(error);
-    req.flash('error', 'An error occurred while updating your profile');
-    res.redirect('/profile/edit');
   }
 });
 

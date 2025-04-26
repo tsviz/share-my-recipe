@@ -80,66 +80,70 @@
                         </div>
                     <% } %>
                     
-                    <form action="/profile/edit" method="POST">
-                        <!-- Profile Image (not functional without file upload) -->
-                        <div class="mb-4 text-center">
-                            <div class="profile-image-preview">
-                                <% if (user.profile_image) { %>
-                                    <img src="<%= user.profile_image %>" alt="<%= user.username %>" id="profileImagePreview">
-                                <% } else { %>
-                                    <i class="bi bi-person-fill" style="font-size: 3rem; color: #adb5bd;"></i>
-                                <% } %>
+                    <% if (!user) { %>
+                        <div class="alert alert-danger">User data is missing. Please try again later.</div>
+                    <% } else { %>
+                        <form action="/profile/edit" method="POST">
+                            <!-- Profile Image (not functional without file upload) -->
+                            <div class="mb-4 text-center">
+                                <div class="profile-image-preview">
+                                    <% if (user.profile_image) { %>
+                                        <img src="<%= user.profile_image %>" alt="<%= user.username %>" id="profileImagePreview">
+                                    <% } else { %>
+                                        <i class="bi bi-person-fill" style="font-size: 3rem; color: #adb5bd;"></i>
+                                    <% } %>
+                                </div>
+                                <p class="text-muted mb-2">Profile image (coming soon)</p>
                             </div>
-                            <p class="text-muted mb-2">Profile image (coming soon)</p>
-                        </div>
-                        
-                        <!-- Username -->
-                        <div class="mb-3">
-                            <label for="username" class="form-label">Username</label>
-                            <input type="text" class="form-control" id="username" name="username" value="<%= user.username %>" required>
-                        </div>
-                        
-                        <!-- Email (readonly) -->
-                        <div class="mb-3">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control bg-light" id="email" value="<%= user.email %>" readonly>
-                            <div class="form-text">Email cannot be changed.</div>
-                        </div>
-                        
-                        <!-- Bio -->
-                        <div class="mb-4">
-                            <label for="bio" class="form-label">Bio</label>
-                            <textarea class="form-control" id="bio" name="bio" rows="4" placeholder="Tell us about yourself and your cooking style..."><%= user.bio || '' %></textarea>
-                        </div>
-                        
-                        <hr class="my-4">
-                        
-                        <h4 class="mb-3">Change Password</h4>
-                        <p class="text-muted mb-3">Leave blank if you don't want to change your password.</p>
-                        
-                        <!-- Current Password -->
-                        <div class="mb-3">
-                            <label for="currentPassword" class="form-label">Current Password</label>
-                            <input type="password" class="form-control" id="currentPassword" name="currentPassword">
-                        </div>
-                        
-                        <!-- New Password -->
-                        <div class="mb-3">
-                            <label for="newPassword" class="form-label">New Password</label>
-                            <input type="password" class="form-control" id="newPassword" name="newPassword">
-                        </div>
-                        
-                        <!-- Confirm New Password -->
-                        <div class="mb-4">
-                            <label for="confirmPassword" class="form-label">Confirm New Password</label>
-                            <input type="password" class="form-control" id="confirmPassword" name="confirmPassword">
-                        </div>
-                        
-                        <div class="d-flex justify-content-between">
-                            <a href="/profile" class="btn btn-outline-secondary">Cancel</a>
-                            <button type="submit" class="btn btn-main">Save Changes</button>
-                        </div>
-                    </form>
+                            
+                            <!-- Username -->
+                            <div class="mb-3">
+                                <label for="username" class="form-label">Username</label>
+                                <input type="text" class="form-control" id="username" name="username" value="<%= user.username %>" required>
+                            </div>
+                            
+                            <!-- Email (readonly) -->
+                            <div class="mb-3">
+                                <label for="email" class="form-label">Email</label>
+                                <input type="email" class="form-control bg-light" id="email" value="<%= user.email %>" readonly>
+                                <div class="form-text">Email cannot be changed.</div>
+                            </div>
+                            
+                            <!-- Bio -->
+                            <div class="mb-4">
+                                <label for="bio" class="form-label">Bio</label>
+                                <textarea class="form-control" id="bio" name="bio" rows="4" placeholder="Tell us about yourself and your cooking style..."><%= user.bio || '' %></textarea>
+                            </div>
+                            
+                            <hr class="my-4">
+                            
+                            <h4 class="mb-3">Change Password</h4>
+                            <p class="text-muted mb-3">Leave blank if you don't want to change your password.</p>
+                            
+                            <!-- Current Password -->
+                            <div class="mb-3">
+                                <label for="currentPassword" class="form-label">Current Password</label>
+                                <input type="password" class="form-control" id="currentPassword" name="currentPassword">
+                            </div>
+                            
+                            <!-- New Password -->
+                            <div class="mb-3">
+                                <label for="newPassword" class="form-label">New Password</label>
+                                <input type="password" class="form-control" id="newPassword" name="newPassword">
+                            </div>
+                            
+                            <!-- Confirm New Password -->
+                            <div class="mb-4">
+                                <label for="confirmPassword" class="form-label">Confirm New Password</label>
+                                <input type="password" class="form-control" id="confirmPassword" name="confirmPassword">
+                            </div>
+                            
+                            <div class="d-flex justify-content-between">
+                                <a href="/profile" class="btn btn-outline-secondary">Cancel</a>
+                                <button type="submit" class="btn btn-main">Save Changes</button>
+                            </div>
+                        </form>
+                    <% } %>
                 </div>
             </div>
         </div>

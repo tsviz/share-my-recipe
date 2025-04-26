@@ -42,10 +42,13 @@ export default function configurePassport(passport: PassportStatic, pool: Pool):
   // Deserialize user from session
   passport.deserializeUser(async (id, done) => {
     try {
+      console.log('Debug: Deserializing user with id =', id);
       const result = await pool.query(
         'SELECT id, username, email, created_at, profile_image, bio FROM users WHERE id = $1', 
         [id]
       );
+      
+      console.log('Debug: Query result for deserialization =', result.rows);
       
       if (result.rows.length === 0) {
         return done(null, false);

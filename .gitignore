@@ -29,3 +29,6 @@ coverage/
 # Misc
 *.swp
 *.swo
+
+# ignore generate-hashes.js
+generate-hashes.js
