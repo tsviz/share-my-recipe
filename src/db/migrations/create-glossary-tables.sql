@@ -179,6 +179,17 @@ VALUES
   ('European', 'cuisine', 'Cuisine from Europe, encompassing a wide variety of regional dishes')
 ON CONFLICT DO NOTHING;
 
+-- Ensure all required terms exist in the glossary_terms table
+INSERT INTO glossary_terms (standard_term, term_type, description)
+VALUES
+  ('Indian', 'cuisine', 'Cuisine from India, known for its spices and diverse flavors'),
+  ('Middle Eastern', 'cuisine', 'Cuisine from the Middle East, known for spices, hummus, and kebabs'),
+  ('Italian', 'cuisine', 'Cuisine from Italy, known for pasta, pizza, and olive oil'),
+  ('French', 'cuisine', 'Cuisine from France, known for pastries, cheeses, and fine dining'),
+  ('American', 'cuisine', 'Cuisine from the United States, known for burgers, BBQ, and diverse influences'),
+  ('Mexican', 'cuisine', 'Cuisine from Mexico, known for tacos, burritos, and spicy flavors')
+ON CONFLICT DO NOTHING;
+
 -- Add more related terms for cuisines and dishes
 INSERT INTO glossary_related_terms (source_term_id, related_term_id, relation_type, strength)
 VALUES
@@ -220,4 +231,165 @@ VALUES
   ((SELECT id FROM glossary_terms WHERE standard_term = 'European' LIMIT 1), 
    (SELECT id FROM glossary_terms WHERE standard_term = 'Rye Bread' LIMIT 1), 
    'includes_dish', 0.9)
+ON CONFLICT DO NOTHING;
+
+-- Add bread category and types to the glossary
+INSERT INTO glossary_terms (standard_term, term_type, description)
+VALUES
+  ('Bread', 'category', 'Staple food prepared from dough of flour and water'),
+  ('Flatbread', 'dish', 'Bread made with flour, water, salt, and often yeast, that is flattened and baked'),
+  ('Sourdough', 'dish', 'Bread made by the fermentation of dough using naturally occurring lactobacilli and yeast'),
+  ('Naan', 'dish', 'Leavened, oven-baked flatbread found in the cuisines of Western Asia, Central Asia, and South Asia'),
+  ('Pita', 'dish', 'A family of yeast-leavened round flatbreads baked from wheat flour'),
+  ('Focaccia', 'dish', 'A flat oven-baked Italian bread similar to pizza dough'),
+  ('Baguette', 'dish', 'A long, thin loaf of French bread with a crisp crust'),
+  ('Ciabatta', 'dish', 'An Italian white bread made from wheat flour, water, salt, and yeast'),
+  ('Brioche', 'dish', 'A French pastry-like bread with a high egg and butter content'),
+  ('Bagel', 'dish', 'A dense bread roll in the shape of a ring, boiled before baking'),
+  ('Cornbread', 'dish', 'Bread made with cornmeal, popular in American cuisine'),
+  ('Roti', 'dish', 'Unleavened flatbread originating from the Indian subcontinent'),
+  ('Tortilla', 'dish', 'Thin, unleavened flatbread made from corn or wheat flour')
+ON CONFLICT DO NOTHING;
+
+-- Add variants for bread types
+INSERT INTO glossary_variants (glossary_term_id, variant_term, variant_type)
+VALUES
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Flatbread' LIMIT 1), 'flat bread', 'synonym'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Flatbread' LIMIT 1), 'flat-bread', 'synonym'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Sourdough' LIMIT 1), 'sour dough', 'synonym'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Sourdough' LIMIT 1), 'sour-dough', 'synonym'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Naan' LIMIT 1), 'naan bread', 'synonym'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Focaccia' LIMIT 1), 'focacia', 'misspelling'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Baguette' LIMIT 1), 'french bread', 'synonym'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Ciabatta' LIMIT 1), 'ciabata', 'misspelling'),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Cornbread' LIMIT 1), 'corn bread', 'synonym')
+ON CONFLICT DO NOTHING;
+
+-- Link bread types to the bread category
+INSERT INTO glossary_related_terms (source_term_id, related_term_id, relation_type, strength)
+VALUES
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Flatbread' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Sourdough' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Naan' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Pita' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Focaccia' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Baguette' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Ciabatta' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Brioche' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Bagel' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Cornbread' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Roti' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Bread' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Tortilla' LIMIT 1),
+   'includes_item', 0.9)
+ON CONFLICT DO NOTHING;
+
+-- Link bread types to cuisines
+INSERT INTO glossary_related_terms (source_term_id, related_term_id, relation_type, strength)
+VALUES
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Indian' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Naan' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Middle Eastern' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Pita' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Italian' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Focaccia' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Italian' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Ciabatta' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'French' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Baguette' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'French' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Brioche' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'American' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Cornbread' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Indian' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Roti' LIMIT 1),
+   'includes_dish', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Mexican' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Tortilla' LIMIT 1),
+   'includes_dish', 0.9)
+ON CONFLICT DO NOTHING;
+
+-- Ensure the 'Dairy' term exists in the glossary_terms table
+INSERT INTO glossary_terms (standard_term, term_type, description)
+VALUES
+  ('Dairy', 'category', 'A category for dairy products including milk, cheese, and butter')
+ON CONFLICT DO NOTHING;
+
+-- Add specific dairy-related ingredients to the glossary
+INSERT INTO glossary_terms (standard_term, term_type, description)
+VALUES
+  ('Milk', 'ingredient', 'A dairy product used in cooking, baking, and beverages'),
+  ('Cheese', 'ingredient', 'A dairy product made from curdled milk, available in various types and flavors'),
+  ('Butter', 'ingredient', 'A dairy product made from churning cream, used in cooking and baking'),
+  ('Cream', 'ingredient', 'A thick dairy product used in sauces and desserts'),
+  ('Yogurt', 'ingredient', 'A fermented dairy product often used in cooking or as a snack'),
+  ('Sour Cream', 'ingredient', 'A tangy dairy product used in dips and baking'),
+  ('Ice Cream', 'ingredient', 'A frozen dairy dessert'),
+  ('Whey', 'ingredient', 'A byproduct of cheese production, used in protein supplements'),
+  ('Casein', 'ingredient', 'A protein found in milk, used in various food products'),
+  ('Ghee', 'ingredient', 'Clarified butter used in Indian cooking')
+ON CONFLICT DO NOTHING;
+
+-- Link dairy-related ingredients to the 'dairy' category
+INSERT INTO glossary_related_terms (source_term_id, related_term_id, relation_type, strength)
+VALUES
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Milk' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Cheese' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Butter' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Cream' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Yogurt' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Sour Cream' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Ice Cream' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Whey' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Casein' LIMIT 1),
+   'includes_item', 0.9),
+  ((SELECT id FROM glossary_terms WHERE standard_term = 'Dairy' LIMIT 1),
+   (SELECT id FROM glossary_terms WHERE standard_term = 'Ghee' LIMIT 1),
+   'includes_item', 0.9)
 ON CONFLICT DO NOTHING;

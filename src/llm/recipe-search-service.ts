@@ -72,20 +72,8 @@ export class RecipeSearchService {
       return envModel;
     }
     
-    // List models in order of preference (prioritizing memory efficiency)
-    const preferredModels = [
-      'tinyllama',                      // Meta tinyllama, efficient with low memory requirements
-      'Phi-3-mini-4k-instruct-q4',      // Microsoft Phi-3-mini, excellent performance at low size (~2GB)
-      'mistral-7b-instruct-v0.2-q4',    // Highly optimized instruction model (~3GB)
-      'llama-2-7b-chat-q4',             // Meta LLaMA2 with quantization
-      'gemma-7b-it-q4',                 // Google Gemma instruction model
-    ];
-    
-    // Use first preferred model as default
-    const defaultModel = preferredModels[0];
-    
-    console.log(`Using model ${defaultModel} for structured JSON generation (from defaults)`);
-    return defaultModel;
+    // Default to mistral if no environment variable is set
+    return 'mistral';
   }
 
   /**
@@ -129,18 +117,26 @@ export class RecipeSearchService {
    */
   private async analyzeQueryWithAI(userQuery: string): Promise<any> {
     try {
-      const model = this.selectModelForQuery(userQuery);
+      // Always use environment model, never try to set a different model
+      const model = process.env.LLM_MODEL || 'mistral';
+      console.log(`Using model ${model} for structured JSON generation (enforced by environment)`);
+      
       const prompt = this.generateOptimizedPrompt(userQuery);
-      const aiResponse = await this.llmClient.generateCompletion(prompt, { model });
+      
+      // Pass the model name but don't allow any internal override
+      const aiResponse = await this.llmClient.generateCompletion(prompt, {});
       const aiAnalysis = await this.parseAIResponse(aiResponse, userQuery);
+      
+      // Post-process the AI analysis to enhance it with pattern matching
+      const enhancedAnalysis = aiAnalysis; // Directly use aiAnalysis if enhancement is not required
+      
       this.resetFailureCount();
-      return aiAnalysis;
+      return enhancedAnalysis;
     } catch (error) {
-      this.incrementFailureCount();
-      console.error('Error in analyzeQueryWithAI:', error);
-      return this.createFallbackAnalysis(userQuery);
-    }
-  }
+          this.incrementFailureCount();
+          throw error; // Ensure the method ends properly
+        }
+      }
   
   /**
    * Search recipes with AI-enhanced understanding of user's preferences
@@ -177,53 +173,152 @@ export class RecipeSearchService {
       const aiAnalysis = await this.analyzeQueryWithAI(userQuery);
       console.log('AI analysis of query:', aiAnalysis);
 
-      // Dynamically resolve category terms like "vegetables" into their specific items using the glossary service
+      // Dynamically resolve category terms like "vegetables" into their specific items
       const expandedExclusions: string[][] = await Promise.all(
         aiAnalysis.excludeIngredients.map(async (ingredient: string): Promise<string[]> => {
           const resolvedItems: string[] = await this.glossaryService.resolveCategory(ingredient);
           return resolvedItems.length > 0 ? resolvedItems : [ingredient];
         })
       );
+      
+      // Expand included ingredients similarly
+      const expandedInclusions: string[][] = await Promise.all(
+        aiAnalysis.includeIngredients.map(async (ingredient: string): Promise<string[]> => {
+          const resolvedItems: string[] = await this.glossaryService.resolveCategory(ingredient);
+          return resolvedItems.length > 0 ? resolvedItems : [ingredient];
+        })
+      );
 
-      // Flatten the array of resolved exclusions
+      // Flatten the arrays of resolved ingredients
       const flattenedExclusions = expandedExclusions.flat();
+      const flattenedInclusions = expandedInclusions.flat();
+      
+      console.log('Expanded included ingredients:', flattenedInclusions);
 
-      // Ensure the SQL query uses the expanded exclusions
-      const sqlQuery: string = `
+      // Build the base query
+      let sqlQuery = `
         SELECT r.id, r.title, r.description, r.cuisine, r.category_id
         FROM recipes r
         WHERE 1=1
-          ${flattenedExclusions.map((_: string, idx: number): string => `AND r.id NOT IN (
-        SELECT ri.recipe_id 
-        FROM recipe_ingredients ri 
-        JOIN ingredients i ON ri.ingredient_id = i.id 
-        WHERE i.name ILIKE $${idx + 1}
-          )`).join(' ')}
+      `;
+      
+      const sqlParams: any[] = [];
+      let paramIndex = 1;
+      
+      // Add exclusion filters for ingredients
+      if (flattenedExclusions.length > 0) {
+        for (const excludedIngredient of flattenedExclusions) {
+          // Exclude recipes where the ingredient appears in the ingredients list
+          sqlQuery += `
+            AND r.id NOT IN (
+              SELECT ri.recipe_id 
+              FROM recipe_ingredients ri 
+              JOIN ingredients i ON ri.ingredient_id = i.id 
+              WHERE i.name ILIKE $${paramIndex}
+            )
+          `;
+          sqlParams.push(`%${excludedIngredient}%`);
+          paramIndex++;
+          
+          // Also exclude recipes where the ingredient is mentioned in title or description
+          // This ensures we don't recommend recipes that prominently feature excluded ingredients
+          sqlQuery += `
+            AND (r.title NOT ILIKE $${paramIndex} AND r.description NOT ILIKE $${paramIndex})
+          `;
+          sqlParams.push(`%${excludedIngredient}%`);
+          paramIndex++;
+        }
+      }
+      
+      // Add inclusion filters - recipes MUST include these ingredients
+      if (flattenedInclusions.length > 0) {
+        for (const includedIngredient of flattenedInclusions) {
+          sqlQuery += `
+            AND r.id IN (
+              SELECT ri.recipe_id 
+              FROM recipe_ingredients ri 
+              JOIN ingredients i ON ri.ingredient_id = i.id 
+              WHERE i.name ILIKE $${paramIndex}
+            )
+          `;
+          sqlParams.push(`%${includedIngredient}%`);
+          paramIndex++;
+        }
+      }
+      
+      // Add cuisine filters if specified
+      if (aiAnalysis.cuisines && aiAnalysis.cuisines.length > 0) {
+        const cuisineConditions: string[] = [];
+        for (const cuisine of aiAnalysis.cuisines) {
+          cuisineConditions.push(`r.cuisine ILIKE $${paramIndex}`);
+          sqlParams.push(`%${cuisine}%`);
+          paramIndex++;
+        }
+        if (cuisineConditions.length > 0) {
+          sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
+        }
+      }
+      
+      // Add main dish type filters if specified
+      if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
+        const dishConditions: string[] = [];
+        for (const dish of aiAnalysis.mainDish) {
+          dishConditions.push(`(r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`);
+          sqlParams.push(`%${dish}%`);
+          paramIndex++;
+        }
+        if (dishConditions.length > 0) {
+          sqlQuery += ` AND (${dishConditions.join(' OR ')})`;
+        }
+      }
+
+      // Add ordering logic - prioritize recipes that match the user's query
+      sqlQuery += `
         ORDER BY 
           CASE
-        WHEN r.title ILIKE $${flattenedExclusions.length + 1} THEN 1
-        WHEN r.description ILIKE $${flattenedExclusions.length + 1} THEN 2
-        ELSE 3
+            WHEN r.title ILIKE $${paramIndex} THEN 1
+            WHEN r.description ILIKE $${paramIndex} THEN 2
+            ELSE 3
           END,
-          r.id DESC LIMIT 20
+          r.popularity DESC LIMIT 20
       `;
+      
+      // Add the full query string as the last parameter for the ORDER BY clause
+      sqlParams.push(`%${userQuery}%`);
 
-      const sqlParams = flattenedExclusions.map((ingredient: string) => `%${ingredient}%`).concat(`%${userQuery}%`);
       console.log('Executing AI-enhanced SQL query:', sqlQuery);
       console.log('With parameters:', sqlParams);
 
       const result = await this.pool.query(sqlQuery, sqlParams);
       console.log(`AI search returned ${result.rows.length} matching recipes`);
 
-      if (result.rows.length === 0) {
-        console.log('AI search returned no results, trying fallback search');
+      // Post-process results to filter out any remaining recipes that mention excluded ingredients
+      let filteredResults = result.rows;
+      if (flattenedExclusions.length > 0) {
+        // List of common implicit dairy terms
+        const implicitDairyTerms = [
+          ...flattenedExclusions.map(e => e.toLowerCase()),
+          'creamy', 'cheesy', 'cheddar', 'mozzarella', 'parmesan', 'feta', 'ricotta', 'gouda', 'swiss', 'provolone', 'brie', 'camembert', 'mascarpone', 'gruyere', 'blue cheese', 'cream cheese', 'custard', 'yoghurt', 'yogurt', 'icecream', 'ice cream', 'buttermilk', 'evaporated milk', 'condensed milk', 'whipped cream', 'half and half', 'sourcream', 'sour cream', 'milk chocolate', 'white chocolate'
+        ];
+        filteredResults = result.rows.filter(recipe => {
+          const lowerTitle = recipe.title.toLowerCase();
+          const lowerDesc = recipe.description.toLowerCase();
+          // Exclude if any explicit or implicit dairy term is found
+          return !implicitDairyTerms.some(term => lowerTitle.includes(term) || lowerDesc.includes(term));
+        });
+        
+        console.log(`Post-filtering removed ${result.rows.length - filteredResults.length} recipes containing excluded or implicit dairy terms in title/description`);
+      }
+      
+      if (filteredResults.length === 0) {
+        console.log('Filtered search returned no results, trying fallback search');
         const fallbackResults = await this.fallbackSearch(userQuery);
         this.saveToCache(normalizedQuery, fallbackResults);
         return fallbackResults;
       }
 
-      this.saveToCache(normalizedQuery, result.rows);
-      return result.rows;
+      this.saveToCache(normalizedQuery, filteredResults);
+      return filteredResults;
     } catch (error) {
       console.error('Error in recipe search:', error);
       const fallbackResults = await this.fallbackSearch(userQuery);
@@ -237,21 +332,44 @@ export class RecipeSearchService {
 
     // Respect user preferences in fallback search
     const aiAnalysis = this.createFallbackAnalysis(query);
-    const sqlQuery: string = `
+
+    // Build a more specific fallback query if mainDish is identified
+    let sqlQuery = `
       SELECT r.id, r.title, r.description, r.cuisine, r.category_id
       FROM recipes r
       WHERE 1=1
-      ${aiAnalysis.excludeIngredients.map((_: string, idx: number): string => `AND r.id NOT IN (
-        SELECT ri.recipe_id 
-        FROM recipe_ingredients ri 
-        JOIN ingredients i ON ri.ingredient_id = i.id 
-        WHERE i.name ILIKE $${idx + 1}
-      )`).join(' ')}
-      ORDER BY r.popularity DESC
-      LIMIT 20
     `;
 
-    const sqlParams = aiAnalysis.excludeIngredients.map((ingredient: string) => `%${ingredient}%`);
+    const sqlParams: any[] = [];
+    let paramIndex = 1;
+
+    // Prioritize mainDish if specified
+    if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
+      const dishConditions: string[] = [];
+      for (const dish of aiAnalysis.mainDish) {
+        dishConditions.push(`(r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`);
+        sqlParams.push(`%${dish}%`);
+        paramIndex++;
+      }
+      if (dishConditions.length > 0) {
+        sqlQuery += ` AND (${dishConditions.join(' OR ')})`;
+      }
+    }
+
+    // Add ordering logic to prioritize relevant results
+    sqlQuery += `
+      ORDER BY 
+        CASE
+          WHEN r.title ILIKE $${paramIndex} THEN 1
+          WHEN r.description ILIKE $${paramIndex} THEN 2
+          ELSE 3
+        END,
+        r.popularity DESC LIMIT 20
+    `;
+
+    // Add the full query string as the last parameter for the ORDER BY clause
+    sqlParams.push(`%${query}%`);
+
     console.log('Executing fallback SQL query:', sqlQuery);
     console.log('With parameters:', sqlParams);
 
@@ -383,7 +501,7 @@ export class RecipeSearchService {
       
       // Print final recommendations
       console.log('=== FINAL RECOMMENDATIONS (GLOSSARY-BASED) ===');
-      result.rows.slice(0, 6).forEach(recipe => {
+      result.rows.slice(0, 12).forEach(recipe => {
         console.log(`- ${recipe.title} (${recipe.description})`);
       });
       
@@ -1313,4 +1431,4 @@ function humanizeAIResponse(rawResponse: string): string {
   return humanizedResponse;
 }
 
-module.exports = { humanizeAIResponse };
+export { humanizeAIResponse };

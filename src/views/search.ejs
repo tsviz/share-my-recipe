@@ -5,8 +5,7 @@
   
   <form method="POST" action="/recipes/search" class="mb-4">
     <div class="form-group">
-      <label for="about">Tell us what you're looking for:</label>
-      <textarea class="form-control" id="about" name="about" rows="3" placeholder="E.g. I want vegetarian pasta recipes without tomatoes, or I love spicy Asian food with chicken"><%= locals.about || '' %></textarea>
+      <input type="text" class="form-control" id="about" name="about" placeholder="What are you looking for? (e.g. vegetarian pasta without tomatoes)" value="<%= locals.about || '' %>" autocomplete="off" />
     </div>
     <button type="submit" class="btn btn-primary">Get Recommendations</button>
   </form>

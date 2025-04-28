@@ -206,12 +206,68 @@ export class GlossaryService {
    */
   public async resolveCategory(category: string): Promise<string[]> {
     try {
+      // Check for cuisine pattern - "any X foods"
+      const cuisineMatch = category.match(/any\s+([a-zA-Z]+)\s+foods?/i);
+      if (cuisineMatch && cuisineMatch[1]) {
+        const cuisine = cuisineMatch[1];
+        console.log(`Detected cuisine pattern "${cuisine}" in category "${category}"`);
+        
+        // Try to get related dishes for this cuisine
+        const dishes = await this.getRelatedDishes(cuisine);
+        if (dishes.length > 0) {
+          console.log(`Found ${dishes.length} related dishes for cuisine "${cuisine}"`);
+          return dishes;
+        }
+      }
+
+      // Use the glossary_terms and glossary_related_terms tables
       const query = `
-        SELECT item_name 
-        FROM glossary 
-        WHERE category_name ILIKE $1
+        SELECT rt.standard_term as item_name
+        FROM glossary_terms st
+        JOIN glossary_related_terms grt ON st.id = grt.source_term_id
+        JOIN glossary_terms rt ON grt.related_term_id = rt.id
+        WHERE LOWER(st.standard_term) = LOWER($1)
+        AND grt.relation_type = 'includes_item'
       `;
       const result = await this.pool.query(query, [category]);
+      
+      if (result.rows.length === 0) {
+        console.log(`No items found for category "${category}"`);
+        
+        // For cuisines, try searching directly in the glossary_terms table
+        if (category.toLowerCase().includes('jewish') || 
+            category.toLowerCase().includes('cuisine') ||
+            category.toLowerCase().includes('food')) {
+          
+          // Extract the cuisine name
+          let cuisineName = category.toLowerCase()
+            .replace('any', '')
+            .replace('foods', '')
+            .replace('cuisine', '')
+            .replace('food', '')
+            .trim();
+          
+          if (cuisineName) {
+            console.log(`Trying to find dishes for cuisine "${cuisineName}"`);
+            const cuisineQuery = `
+              SELECT rt.standard_term
+              FROM glossary_terms st
+              JOIN glossary_related_terms grt ON st.id = grt.source_term_id
+              JOIN glossary_terms rt ON grt.related_term_id = rt.id
+              WHERE LOWER(st.standard_term) LIKE $1
+              AND grt.relation_type = 'includes_dish'
+            `;
+            
+            const cuisineResult = await this.pool.query(cuisineQuery, [`%${cuisineName}%`]);
+            if (cuisineResult.rows.length > 0) {
+              const dishes = cuisineResult.rows.map(row => row.standard_term);
+              console.log(`Found ${dishes.length} dishes for cuisine "${cuisineName}": ${dishes.join(', ')}`);
+              return dishes;
+            }
+          }
+        }
+      }
+      
       return result.rows.map(row => row.item_name);
     } catch (error) {
       console.error(`Error resolving category "${category}":`, error);

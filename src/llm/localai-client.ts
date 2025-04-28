@@ -24,7 +24,7 @@ export class LocalAIClient {
     this.port = options.port || 11434;
     this.apiUrl = options.apiUrl || `http://localhost:${this.port}`;
     // Prioritize environment variable for model name
-    this.modelName = process.env.LLM_MODEL || options.modelName || 'tinyllama';
+    this.modelName = process.env.LLM_MODEL || options.modelName || 'mistral';
     this.containerized = options.containerized || 
       process.env.LLM_CONTAINERIZED === 'true';
     
@@ -36,17 +36,16 @@ export class LocalAIClient {
    * This allows switching models at runtime, but only if not overridden by environment variable
    */
   public setModel(modelName: string): void {
-    // Check if environment variable is set - if so, don't allow overriding
     const envModel = process.env.LLM_MODEL;
     if (envModel) {
       if (modelName !== envModel) {
         console.log(`Ignoring request to change model to ${modelName}. Using environment-specified model: ${envModel}`);
-        this.modelName = envModel;  // Ensure we're using the environment model
+        // Print a stack trace for debugging
+        console.trace('setModel called with', modelName);
       }
+      this.modelName = envModel;
       return;
     }
-    
-    // If no environment variable, allow model change
     if (modelName && modelName !== this.modelName) {
       console.log(`Changed LocalAI model to: ${modelName}`);
       this.modelName = modelName;
@@ -57,7 +56,8 @@ export class LocalAIClient {
    * Get the current model name
    */
   public getModel(): string {
-    return this.modelName;
+    // Always prioritize environment model
+    return process.env.LLM_MODEL || this.modelName;
   }
 
   /**
@@ -65,32 +65,58 @@ export class LocalAIClient {
    */
   public async healthCheck(): Promise<boolean> {
     try {
-      // Check if the server is running
-      let response;
+      // For Ollama running locally or in Docker, we should check the models endpoint
+      // instead of the health endpoint which doesn't exist in Ollama
       try {
-        response = await axios.get(`${this.apiUrl}/health`, { 
+        const response = await axios.get(`${this.apiUrl}/api/tags`, { 
           timeout: 2000 
         });
-      } catch {
-        response = null;
+        
+        if (response && response.status === 200) {
+          // Check if our model exists in the list
+          const models = response.data && response.data.models ? response.data.models : [];
+          
+          if (models.length > 0) {
+            console.log('Ollama service is healthy. Available models:', 
+              models.map((m: any) => m.name).join(', '));
+            return true;
+          }
+          
+          console.log('Ollama service is responding but no models found');
+          return true; // Still return true as the service is running
+        }
+      } catch (e) {
+        // Try alternative Ollama endpoint
+        try {
+          const response = await axios.get(`${this.apiUrl}/api/version`, { 
+            timeout: 2000 
+          });
+          
+          if (response && response.status === 200) {
+            console.log('Ollama service is healthy');
+            return true;
+          }
+        } catch (e2) {
+          // Both endpoints failed
+          console.log('Failed to connect to Ollama API endpoints');
+        }
       }
       
-      if (response && response.status === 200) {
-        console.log('LocalAI service is healthy');
-        return true;
-      }
+      console.log('LocalAI/Ollama service health check failed');
       
-      console.log('LocalAI service health check failed');
-      
+      // If we specified we're using containerized, check Docker
       if (this.containerized) {
         console.log('Using containerized LLM. Please ensure docker-compose is running.');
-        return false;
+        return await this.checkDockerService();
       }
       
-      // For non-containerized setup, try checking Docker
-      return this.checkDockerService();
+      // For non-containerized setup, provide helpful message for local Ollama
+      console.log('Check if Ollama is running locally with: ollama list');
+      console.log('If not, start it with: ollama serve');
+      
+      return false;
     } catch (error) {
-      console.error('Failed to check health of LocalAI service:', error);
+      console.error('Failed to check health of LocalAI/Ollama service:', error);
       return false;
     }
   }
@@ -125,22 +151,38 @@ export class LocalAIClient {
   public async generateCompletion(prompt: string, options: any = {}): Promise<string> {
     let triedSmallerModel = false;
     let lastError: any = null;
-    let modelToUse: string = process.env.LLM_MODEL || this.modelName || 'tinyllama';
+    
+    // Always prioritize environment variable for model
+    const envModel = process.env.LLM_MODEL;
+    let modelToUse = envModel || options.model || this.modelName || 'mistral';
+    
     let result: string | null = null;
+    
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        // If options contain a different model, warn about it
-        if (options.model && options.model !== modelToUse) {
-          console.log(`Request to use model ${options.model} ignored. Using environment model ${modelToUse} instead.`);
-        }
-        console.log(`Using model ${modelToUse} for AI generation (enforced by environment)`);
+        console.log(`Using model ${modelToUse} for structured JSON generation`);
+        
         const isHealthy = await this.healthCheck();
         if (!isHealthy) {
-          return 'LLM service is not available. Please ensure docker-compose is running the llm_service.';
+          // Return a properly formatted JSON response instead of an error message
+          // This will prevent JSON parsing errors in the recipe-search-service
+          return JSON.stringify({
+            mainDish: [],
+            cuisines: [],
+            includeIngredients: [],
+            excludeIngredients: [],
+            dietaryPreferences: [],
+            cookingMethods: [],
+            explanation: "LLM service unavailable. Using fallback search."
+          });
         }
+        
         const cleanOptions = { ...options };
-        delete cleanOptions.model;
+        delete cleanOptions.model; // Remove the model option so we can explicitly set it
+        
+        // Call generateWithLocalAI with our chosen model
         result = await this.generateWithLocalAI(prompt, { ...cleanOptions, model: modelToUse });
+        
         // If we get a memory error, try a smaller model
         if (typeof result === 'string' && result.includes('model requires more system memory')) {
           if (!triedSmallerModel && modelToUse !== 'tinyllama') {
@@ -150,9 +192,11 @@ export class LocalAIClient {
             continue;
           }
         }
+        
         return result;
       } catch (error: any) {
         lastError = error;
+        
         // If error message is about memory, try smaller model
         if (error?.message?.includes('model requires more system memory') && !triedSmallerModel && modelToUse !== 'tinyllama') {
           console.warn('Model too large for available memory. Retrying with smaller model: tinyllama');
@@ -160,15 +204,19 @@ export class LocalAIClient {
           triedSmallerModel = true;
           continue;
         }
+        
         break;
       }
     }
+    
     if (result && typeof result === 'string' && result.includes('model requires more system memory')) {
       return result + ' Please try a smaller model such as "tinyllama".';
     }
+    
     if (lastError) {
-      return `Error generating AI response: ${lastError.message || 'Unknown error'}`;
+      return `Error generating AI response: ${lastError.message || 'Unknown error'}. Consider using a different model.`;
     }
+    
     return 'Unknown error generating AI response.';
   }
 
@@ -180,23 +228,20 @@ export class LocalAIClient {
       choices: { text: string }[];
       [key: string]: any;
     }
+    
     try {
+      // Always prioritize environment variable for model
       const envModel = process.env.LLM_MODEL;
-      const modelToUse = options.model || envModel || this.modelName || 'tinyllama';
+      const modelToUse = envModel || options.model || this.modelName || 'mistral';
+      
       console.log(`Sending prompt to LocalAI (model: ${modelToUse}): ${prompt.slice(0, 50)}...`);
-      try {
-        console.log('Request to /v1/models started at', new Date().toISOString());
-        await axios.get(`${this.apiUrl}/v1/models`, { timeout: 5000 });
-        console.log('Request to /v1/models completed successfully');
-      } catch (err) {
-        console.log('Model checking failed, proceeding anyway');
-      }
       
       console.log('Starting LLM request at', new Date().toISOString());
       console.log('Request to /v1/completions started at', new Date().toISOString());
+      
       const startTime = Date.now();
       const response = await axios.post<LocalAICompletionResponse>(`${this.apiUrl}/v1/completions`, {
-        model: modelToUse,
+        model: modelToUse, // Use the model we've determined
         prompt: prompt,
         max_tokens: options.max_tokens || 800,
         temperature: options.temperature || 0.7,
@@ -206,6 +251,7 @@ export class LocalAIClient {
       }, {
         timeout: process.env.REQUEST_TIMEOUT ? parseInt(process.env.REQUEST_TIMEOUT) : 30000
       });
+      
       const endTime = Date.now();
       console.log('Request to /v1/completions completed in', (endTime - startTime), 'ms');
       

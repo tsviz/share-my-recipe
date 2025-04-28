@@ -1,3 +1,7 @@
+// Import dotenv at the very top to load environment variables from .env file
+import * as dotenv from 'dotenv';
+dotenv.config();
+
 import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
 import { Pool } from 'pg';
@@ -19,12 +23,19 @@ import { registerUser, updateUserProfile, changeUserPassword, isAuthenticated, i
 const app = express();
 const port = 3000;
 
+// Add debugging to see if environment variables are loaded
+console.log('Database connection settings:', {
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'postgres',
+  user: process.env.DB_USER || 'postgres'
+});
+
 // PostgreSQL connection pool
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
-  host: process.env.DB_HOST || 'postgres', // Use environment variable with fallback
+  host: process.env.DB_HOST || 'localhost', // Changed default from 'postgres' to 'localhost'
   database: process.env.DB_NAME || 'postgres',
-  password: process.env.DB_PASSWORD || 'yourpassword',
+  password: process.env.DB_PASSWORD || 'mypassword', // Updated default password
   port: 5432,
 });
 
@@ -502,8 +513,8 @@ app.post('/recipes/search', async (req, res) => {
     
     console.log(`AI search returned ${searchResults.length} matching recipes`);
     
-    // Limit to 6 recommendations
-    recommendations = searchResults.slice(0, 6);
+    // Limit to 10 recommendations
+    recommendations = searchResults.slice(0, 12);
     
     if (recommendations.length === 0) {
       req.flash('info', 'No recipes match your preferences. Try adjusting your requirements.');
