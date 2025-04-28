@@ -109,29 +109,30 @@ export class OllamaClient {
   public async generateCompletion(prompt: string, options: any = {}): Promise<string> {
     const maxRetries = 2;
     let retries = 0;
-    
+
     while (retries <= maxRetries) {
       try {
         console.log(`Sending prompt to Ollama (model: ${this.model}): ${prompt.substring(0, 50)}...`);
-        
-        // Try to ensure model is available
+
+        // Ensure model availability
         if (!this.isModelPullInitiated) {
           const modelAvailable = await this.ensureModelAvailable();
           if (!modelAvailable) {
-            // If model couldn't be loaded, try a more aggressive approach on first retry
             if (retries === 0) {
-              console.log(`Model ${this.model} not available. Attempting direct pull...`);
-              await this.pullModel();
+              console.error(`Model ${this.model} is unavailable. Switching to default model: tinyllama.`);
+              this.setModel('tinyllama');
+              console.log(`Switched to default model: tinyllama. Retrying with the new model.`);
+              continue; // Retry with the default model
+            } else {
+              console.error(`Model ${this.model} is still unavailable after retry. Aborting further retries.`);
+              return `Error generating AI response: Model ${this.model} is unavailable. Fallback to default model failed.`;
             }
           }
         }
-        
-        // Use the correct generation endpoint for Ollama with optimized parameters
+
         const startTime = Date.now();
         console.log(`Starting LLM request at ${new Date(startTime).toISOString()}`);
 
-        // Remove invalid options that caused warnings in the logs (like tfs_z)
-        // Only use options known to work with TinyLlama
         const response = await this.makeRequest('/api/generate', {
           model: this.model,
           prompt: prompt,
@@ -139,41 +140,35 @@ export class OllamaClient {
           options: {
             temperature: 0.7,
             top_p: 0.9,
-            num_ctx: 2048, 
+            num_ctx: 2048,
             num_thread: 4,
             repeat_penalty: 1.1,
-          }
-        }, 'POST', 30000); // 30-second timeout for generation
+          },
+        }, 'POST', 30000);
 
         const endTime = Date.now();
         console.log(`LLM request completed in ${endTime - startTime}ms`);
 
-        // The response format from /api/generate is { response: "text" }
         if (response && response.response) {
           return response.response;
         } else {
-          throw new Error("Empty or invalid response from Ollama");
+          throw new Error('Empty or invalid response from Ollama');
         }
       } catch (error) {
         console.error(`Error generating completion (attempt ${retries + 1}/${maxRetries + 1}):`, error);
-        
-        if (error instanceof Error && error.message.includes('timed out')) {
-          console.log('Request timed out. Consider using a smaller model or increasing timeout.');
-        }
-        
+
         if (retries < maxRetries) {
-          // Wait before retrying (exponential backoff)
           const delay = Math.pow(2, retries) * 1000;
           console.log(`Retrying in ${delay}ms...`);
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
           retries++;
         } else {
           return `Error generating AI response: ${error instanceof Error ? error.message : String(error)}. Consider using a different model.`;
         }
       }
     }
-    
-    return `Error generating AI response: Maximum retries reached`;
+
+    return 'Error generating AI response: Maximum retries reached';
   }
 
   /**

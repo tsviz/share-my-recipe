@@ -416,4 +416,5 @@
         <sqlFile path="create-glossary-tables.sql" relativeToChangelogFile="true" encoding="UTF-8"/>
     </changeSet>
 
+    <include file="add-popularity-column.sql" relativeToChangelogFile="true"/>
 </databaseChangeLog>

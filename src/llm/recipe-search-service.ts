@@ -1,4 +1,4 @@
-import { OllamaClient } from './ollama-client';
+import { LocalAIClient } from './localai-client';
 import { Pool } from 'pg';
 import { GlossaryService } from './glossary-service';
 
@@ -13,7 +13,7 @@ interface CacheItem {
  * Service for enhanced recipe search using the LLM
  */
 export class RecipeSearchService {
-  private ollamaClient: OllamaClient;
+  private llmClient: LocalAIClient;
   private pool: Pool;
   private glossaryService: GlossaryService;
   private aiAvailable: boolean = true; // Optimistic initial setting
@@ -25,9 +25,9 @@ export class RecipeSearchService {
   private readonly CACHE_TTL = 30 * 60 * 1000; // 30 minutes in milliseconds
   private readonly CACHE_ENABLED = true;
   
-  constructor(pool: Pool, ollamaClient?: OllamaClient) {
+  constructor(pool: Pool, llmClient?: LocalAIClient) {
     this.pool = pool;
-    this.ollamaClient = ollamaClient || new OllamaClient();
+    this.llmClient = llmClient || new LocalAIClient();
     this.glossaryService = new GlossaryService(pool);
     
     // Clean cache periodically
@@ -36,26 +36,32 @@ export class RecipeSearchService {
 
   /**
    * Select the appropriate model based on query complexity
-   * Uses lighter models for simple queries to improve performance
+   * Uses more capable models for structured JSON generation that fit within memory constraints
    */
   private selectModelForQuery(query: string): string {
-    // Default model from environment variables
-    const defaultModel = process.env.OLLAMA_MODEL || 'mistral';
+    // Use the model specified in environment variables, or fall back to a default
+    const envModel = process.env.LLM_MODEL;
     
-    // If query is very simple, use tinyllama which is faster
-    if (this.isSimpleQuery(query)) {
-      console.log('Query is simple, using lightweight tinyllama model');
-      return 'tinyllama';
+    // If environment variable is set, prioritize it
+    if (envModel) {
+      console.log(`Using model ${envModel} for structured JSON generation (from environment)`);
+      return envModel;
     }
     
-    // For more complex queries, use a more capable model if available
-    if (defaultModel !== 'tinyllama') {
-      console.log(`Query is complex, using more capable ${defaultModel} model`);
-      return defaultModel;
-    }
+    // List models in order of preference (prioritizing memory efficiency)
+    const preferredModels = [
+      'tinyllama',                      // Meta tinyllama, efficient with low memory requirements
+      'Phi-3-mini-4k-instruct-q4',      // Microsoft Phi-3-mini, excellent performance at low size (~2GB)
+      'mistral-7b-instruct-v0.2-q4',    // Highly optimized instruction model (~3GB)
+      'llama-2-7b-chat-q4',             // Meta LLaMA2 with quantization
+      'gemma-7b-it-q4',                 // Google Gemma instruction model
+    ];
     
-    // Fallback to tinyllama if that's all we have
-    return 'tinyllama';
+    // Use first preferred model as default
+    const defaultModel = preferredModels[0];
+    
+    console.log(`Using model ${defaultModel} for structured JSON generation (from defaults)`);
+    return defaultModel;
   }
   
   /**
@@ -87,10 +93,6 @@ export class RecipeSearchService {
 
       console.log('Starting AI-enhanced recipe search for query:', userQuery);
       
-      // Select the appropriate model based on query complexity
-      const selectedModel = this.selectModelForQuery(userQuery);
-      this.ollamaClient.setModel(selectedModel);
-      
       // Skip AI if we've had too many consecutive failures
       if (!this.aiAvailable) {
         console.log('AI service marked as unavailable due to previous failures, using fallback search');
@@ -101,7 +103,7 @@ export class RecipeSearchService {
       
       // Check if AI service is available and try to prepare the model
       try {
-        const isHealthy = await this.ollamaClient.healthCheck().catch(() => false);
+        const isHealthy = await this.llmClient.healthCheck().catch(() => false);
         if (!isHealthy) {
           this.incrementFailureCount();
           console.log('AI service health check failed, using fallback search');
@@ -110,14 +112,7 @@ export class RecipeSearchService {
           return results;
         }
         
-        // Try to ensure the model is available
-        const modelReady = await this.ollamaClient.ensureModelAvailable().catch(() => false);
-        if (!modelReady) {
-          console.log('Model is not available and could not be loaded, using fallback search');
-          const results = await this.fallbackSearch(userQuery);
-          this.saveToCache(normalizedQuery, results);
-          return results;
-        }
+        // If health check passed, assume model is available
       } catch (error) {
         this.incrementFailureCount();
         console.log('Error checking AI service health:', error);
@@ -135,29 +130,77 @@ export class RecipeSearchService {
         return results;
       }
       
+      // Select the appropriate model for this query and ensure it's set in the client
+      const modelToUse = this.selectModelForQuery(userQuery);
+      
       // Generate prompt for the LLM to analyze the user's query
       // This is where we ask the LLM to translate the natural language query into structured search parameters
-      const prompt = `You are a cooking assistant helping users find recipes.
-Analyze this food query: "${userQuery}"
+      const prompt = `You are a cooking assistant analyzing a recipe search query to extract structured information.
 
-Extract these parameters and respond in this exact JSON format:
+TASK: Analyze this query and extract search parameters in JSON format:
+"${userQuery}"
+
+INSTRUCTIONS:
+1. Think step by step about what the user is looking for in a recipe.
+2. Consider the cuisine type (American, Italian, etc.), ingredients they want to include or exclude, and any dietary preferences.
+3. Format your response ONLY as a valid JSON object with these exact fields:
+
+{
+  "mainDish": [],      // Main dish types mentioned (e.g., "pasta", "soup", "pizza")
+  "cuisines": [],      // Cuisine types (e.g., "American", "Italian", "Mexican")
+  "includeIngredients": [], // Ingredients the user wants to include
+  "excludeIngredients": [], // Ingredients the user wants to exclude or doesn't like
+  "dietaryPreferences": [], // Dietary requirements (e.g., "vegetarian", "kosher")
+  "cookingMethods": [], // Cooking methods (e.g., "bake", "grill", "fry")
+  "explanation": ""    // Brief explanation of what was understood from the query
+}
+
+IMPORTANT:
+- Respond with ONLY the JSON object above, nothing else.
+- Use empty arrays ([]) when nothing is mentioned for a category.
+- For queries like "I like X but not Y", put X in includeIngredients and Y in excludeIngredients.
+- If a cuisine is mentioned (e.g., American, Italian), be sure to include it in the cuisines array.
+- Check specifically for dietary preferences like vegetarian, vegan, kosher, gluten-free, etc.
+
+EXAMPLES:
+
+Query: "I want vegetarian pasta without mushrooms"
+{
+  "mainDish": ["pasta"],
+  "cuisines": ["Italian"],
+  "includeIngredients": [],
+  "excludeIngredients": ["mushrooms"],
+  "dietaryPreferences": ["vegetarian"],
+  "cookingMethods": [],
+  "explanation": "Vegetarian pasta dishes without mushrooms"
+}
+
+Query: "Show me American cheese recipes"
 {
   "mainDish": [],
-  "cuisines": [],
-  "includeIngredients": [],
+  "cuisines": ["American"],
+  "includeIngredients": ["cheese"],
   "excludeIngredients": [],
   "dietaryPreferences": [],
   "cookingMethods": [],
-  "explanation": ""
+  "explanation": "American cuisine recipes with cheese"
 }
 
-Put ingredients the user wants in "includeIngredients". 
-Put ingredients the user doesn't want in "excludeIngredients".
-For "I like X but not Y" queries, put X in includeIngredients and Y in excludeIngredients.
-Be very concise. Keep arrays empty if not mentioned.`;
+Query: "I love spicy Mexican food but I'm allergic to cilantro"
+{
+  "mainDish": [],
+  "cuisines": ["Mexican"],
+  "includeIngredients": ["spicy"],
+  "excludeIngredients": ["cilantro"],
+  "dietaryPreferences": [],
+  "cookingMethods": [],
+  "explanation": "Spicy Mexican dishes without cilantro"
+}
+
+Remember to output ONLY the JSON object.`;
 
       // Get AI analysis of the user query
-      const aiAnalysisResponse = await this.ollamaClient.generateCompletion(prompt);
+      const aiAnalysisResponse = await this.llmClient.generateCompletion(prompt, { model: modelToUse });
       console.log('Raw AI response:', aiAnalysisResponse);
       
       // Check if the response contains an error message
@@ -186,6 +229,20 @@ Be very concise. Keep arrays empty if not mentioned.`;
       
       console.log('AI analysis of query:', aiAnalysis);
       
+      // Expand 'dairy products' into specific ingredients
+      const dairyProducts = ['milk', 'cheese', 'butter', 'sour cream', 'yogurt', 'cream', 'ice cream', 'whey', 'casein', 'ghee'];
+      if (aiAnalysis.excludeIngredients.includes('dairy products')) {
+        aiAnalysis.excludeIngredients = (aiAnalysis.excludeIngredients as string[]).filter((ingredient: string) => ingredient !== 'dairy products');
+        aiAnalysis.excludeIngredients.push(...dairyProducts);
+      }
+
+      // Expand 'milk products' into specific terms
+      const milkProducts = ['cheese', 'butter', 'cream', 'milk', 'yogurt', 'sour cream', 'ice cream', 'whey', 'casein', 'ghee'];
+      if (aiAnalysis.excludeIngredients.includes('milk products')) {
+        aiAnalysis.excludeIngredients = (aiAnalysis.excludeIngredients as string[]).filter((ingredient: string) => ingredient !== 'milk products');
+        aiAnalysis.excludeIngredients.push(...milkProducts);
+      }
+
       // This is where we translate the structured AI analysis into an efficient SQL query
       // with appropriate parameters for the database search
       let sqlQuery = `
@@ -209,9 +266,22 @@ Be very concise. Keep arrays empty if not mentioned.`;
           sqlQuery += ` AND (${cuisineParams.join(' OR ')})`;
         }
       } else {
-        console.log('No cuisines detected, adding fallback for Jewish Food');
-        sqlParams.push('%Jewish%');
-        sqlQuery += ` AND r.cuisine ILIKE $${paramIndex++}`;
+        // Instead of defaulting to Jewish food, try to extract cuisine from query
+        // or leave it open if no cuisine is specified
+        const extractedCuisines = this.extractCuisinesFromQuery(userQuery);
+        
+        if (extractedCuisines.length > 0) {
+          console.log('No cuisines specified in AI analysis, using extracted cuisines:', extractedCuisines);
+          const cuisineParams: string[] = [];
+          extractedCuisines.forEach((cuisine: string) => {
+            sqlParams.push(`%${cuisine}%`);
+            cuisineParams.push(`r.cuisine ILIKE $${paramIndex++}`);
+          });
+          sqlQuery += ` AND (${cuisineParams.join(' OR ')})`;
+        } else {
+          console.log('No cuisines detected, not applying cuisine filter');
+          // Don't add any cuisine filter to allow all cuisines
+        }
       }
       
       // Filter for ingredients to include (using recipe_ingredients join)
@@ -234,17 +304,16 @@ Be very concise. Keep arrays empty if not mentioned.`;
       
       // Filter out ingredients to exclude
       if (aiAnalysis.excludeIngredients && aiAnalysis.excludeIngredients.length) {
-        // For each excluded ingredient, add a separate NOT IN clause
-        // This ensures that recipes with ANY of these ingredients are excluded
-        aiAnalysis.excludeIngredients.forEach((ingredient: string) => {
-          sqlQuery += ` AND r.id NOT IN (
-            SELECT ri.recipe_id 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE i.name ILIKE $${paramIndex++}
-          )`;
-          sqlParams.push(`%${ingredient}%`);
-        });
+        // Ensure expanded excludeIngredients are applied in the SQL query
+        const excludeConditions: string = aiAnalysis.excludeIngredients.map((ingredient: string, index: number) => `i.name ILIKE $${index + paramIndex}`).join(' OR ');
+        sqlQuery += ` AND r.id NOT IN (
+          SELECT ri.recipe_id 
+          FROM recipe_ingredients ri 
+          JOIN ingredients i ON ri.ingredient_id = i.id 
+          WHERE ${excludeConditions}
+        )`;
+        sqlParams.push(...(aiAnalysis.excludeIngredients as string[]).map((ingredient: string) => `%${ingredient}%`));
+        paramIndex += aiAnalysis.excludeIngredients.length;
       }
       
       // Handle dietary preferences
@@ -670,7 +739,7 @@ Be very concise. Keep arrays empty if not mentioned.`;
       
       // Build params array with the original query, excluded terms, and individual positive terms
       const params = [`%${query}%`, ...excludedTerms.map(term => `%${term}%`), ...includeTerms.map(term => `%${term}%`)];
-      
+
       console.log('Executing optimized SQL query:', sqlQuery);
       console.log('With parameters:', params);
       
@@ -703,191 +772,80 @@ Be very concise. Keep arrays empty if not mentioned.`;
   }
 
   /**
-   * Fallback search method when AI is unavailable
-   * Enhanced to handle queries with both positive and negative preferences
+   * Enhanced fallback search for protein-based dishes and combined queries
    */
   private async fallbackSearch(query: string): Promise<any[]> {
-    try {
-      console.log('Using fallback search for:', query);
-      
-      if (!query || query.trim() === '') {
-        // Return popular recipes if query is empty
-        const result = await this.pool.query(
-          'SELECT id, title, description, cuisine, category_id FROM recipes ORDER BY id DESC LIMIT 20'
-        );
-        return result.rows;
-      }
-      
-      // Special handling for certain types of searches
-      const lowerQuery = query.toLowerCase();
-      
-      // Detect queries about meat dishes
-      if ((lowerQuery.includes('meat') || lowerQuery.includes('beef') || lowerQuery.includes('steak')) && 
-          (lowerQuery.includes('dish') || lowerQuery.includes('recipe') || lowerQuery.includes('only'))) {
-        console.log('Detected meat dish query, using specialized meat search');
-        return this.searchRecipesByProtein('meat');
-      }
-      
-      // Detect queries about chicken dishes
-      if (lowerQuery.includes('chicken') && 
-          (lowerQuery.includes('dish') || lowerQuery.includes('recipe') || lowerQuery.includes('only'))) {
-        console.log('Detected chicken dish query, using specialized chicken search');
-        return this.specializedProteinSearch('chicken');  
-      }
-      
-      // Detect combined meat and chicken request
-      if ((lowerQuery.includes('meat') && lowerQuery.includes('chicken')) &&
-          (lowerQuery.includes('dish') || lowerQuery.includes('recipe') || lowerQuery.includes('only'))) {
-        console.log('Detected combined meat and chicken query, using specialized protein search');
-        return this.specializedCombinedProteinSearch(['meat', 'chicken']);
-      }
-      
-      // Parse the query to extract positive and negative terms
-      const positiveTerms: string[] = [];
-      const negativeTerms: string[] = [];
-      
-      // Extract negative terms (don't like X, without X, no X)
-      const negativePattern = /(don't|dont|do not|doesn't|doesnt|does not|no|not|hate|dislike|without|exclude)\s+(?:like\s+|have\s+|want\s+|)(\w+)/gi;
-      const negativeMatches = [...query.matchAll(negativePattern)];
-      
-      if (negativeMatches.length > 0) {
-        negativeMatches.forEach(match => {
-          if (match[2] && match[2].length > 2) {
-            negativeTerms.push(match[2].toLowerCase());
-          }
-        });
-        console.log('Fallback search: detected negative terms:', negativeTerms);
-      }
-      
-      // First, remove the negative patterns from the query
-      let cleanedQuery = query.toLowerCase();
-      negativeMatches.forEach(match => {
-        cleanedQuery = cleanedQuery.replace(match[0], '');
-      });
-      
-      // Remove common phrases and split by spaces or conjunctions
-      const stopWords = ['but', 'and', 'the', 'with', 'for', 'that', 'can', 'have', 'has', 'like', 'want', 'i', 'recipes'];
-      cleanedQuery.replace(/i like/gi, '')
-                .replace(/i want/gi, '')
-                .replace(/recipes with/gi, '')
-                .split(/\s+|but|and/)
-                .filter(term => term.trim().length > 2 && !stopWords.includes(term.trim()))
-                .forEach(term => positiveTerms.push(term.trim()));
-      
-      // Also check for specific positive patterns
-      const positivePattern = /(?:i like|i want|i love|with|include|add)(?:\s+\w+)?\s+(\w+)/gi;
-      const positiveMatches = [...query.matchAll(positivePattern)];
-      
-      if (positiveMatches.length > 0) {
-        positiveMatches.forEach(match => {
-          if (match[1] && match[1].length > 2 && !negativeTerms.includes(match[1].toLowerCase())) {
-            positiveTerms.push(match[1].toLowerCase());
-          }
-        });
-      }
-      
-      // Deduplicate terms
-      const uniquePositiveTerms = [...new Set(positiveTerms)];
-      console.log('Fallback search: detected positive terms:', uniquePositiveTerms);
-      
-      // Build SQL query based on positive and negative terms
-      let sqlQuery = `
-        SELECT DISTINCT r.id, r.title, r.description, r.cuisine, r.category_id 
-        FROM recipes r
-      `;
-      
-      const sqlParams: any[] = [];
-      let paramIndex = 1;
-      
-      // If we have negative terms, exclude recipes with those ingredients
-      if (negativeTerms.length > 0) {
-        sqlQuery += `
-          LEFT JOIN recipe_ingredients ri_exclude ON r.id = ri_exclude.recipe_id
-          LEFT JOIN ingredients i_exclude ON ri_exclude.ingredient_id = i_exclude.id
-          WHERE r.id NOT IN (
-            SELECT ri_neg.recipe_id 
-            FROM recipe_ingredients ri_neg
-            JOIN ingredients i_neg ON ri_neg.ingredient_id = i_neg.id
-            WHERE 
-        `;
-        
-        const negativeConditions = negativeTerms.map(term => {
-          sqlParams.push(`%${term}%`);
-          return `i_neg.name ILIKE $${paramIndex++}`;
-        });
-        
-        sqlQuery += negativeConditions.join(' OR ');
-        sqlQuery += ')';
-      } else {
-        sqlQuery += ' WHERE 1=1';
-      }
-      
-      // If we have positive terms, add conditions to match those
-      if (uniquePositiveTerms.length > 0) {
-        sqlQuery += ' AND (';
+    const lowerQuery = query.toLowerCase();
 
-        // Check for matches in the cuisine field
-        const cuisineConditions = uniquePositiveTerms.map(term => {
-          sqlParams.push(`%${term}%`);
-          return `r.cuisine ILIKE $${paramIndex++}`;
-        });
-
-        // Combine cuisine conditions with existing ingredient and title/description matches
-        sqlQuery += cuisineConditions.join(' OR ');
-        sqlQuery += ' OR ';
-
-        // Check for matches in ingredients
-        const ingredientConditions = uniquePositiveTerms.map(term => {
-          sqlParams.push(`%${term}%`);
-          return `EXISTS (
-            SELECT 1 FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE ri.recipe_id = r.id AND i.name ILIKE $${paramIndex++}
-          )`;
-        });
-        sqlQuery += ingredientConditions.join(' OR ');
-
-        // Also check title and description
-        const titleDescConditions = uniquePositiveTerms.map(term => {
-          sqlParams.push(`%${term}%`);
-          return `r.title ILIKE $${paramIndex++} OR r.description ILIKE $${paramIndex - 1}`;
-        });
-        sqlQuery += ' OR ' + titleDescConditions.join(' OR ');
-
-        sqlQuery += ')';
-      } else {
-        // If no positive terms identified, use the original query as a fallback
-        sqlParams.push(`%${query}%`);
-        sqlQuery += `
-          AND (
-            r.cuisine ILIKE $${paramIndex} 
-            OR r.title ILIKE $${paramIndex} 
-            OR r.description ILIKE $${paramIndex}
-          )`;
-      }
-      
-      // Add ordering and limit
-      sqlQuery += ' ORDER BY r.id DESC LIMIT 20';
-      
-      console.log('Executing fallback SQL query:', sqlQuery);
-      console.log('With parameters:', sqlParams);
-      
-      const result = await this.pool.query(sqlQuery, sqlParams);
-      console.log(`Fallback search returned ${result.rows.length} matching recipes`);
-      
-      // Print final recommendations
-      console.log('=== FINAL RECOMMENDATIONS ===');
-      result.rows.slice(0, 6).forEach(recipe => {
-        console.log(`- ${recipe.title} (${recipe.description})`);
-      });
-      
-      return result.rows;
-    } catch (error) {
-      console.error('Error in fallback search:', error);
-      return [];
+    // Detect combined protein queries like "meat and chicken dishes"
+    if (lowerQuery.includes('meat') && lowerQuery.includes('chicken')) {
+      console.log('Detected combined meat and chicken query, using specialized protein search');
+      const results = await this.specializedCombinedProteinSearch(['meat', 'chicken']);
+      this.saveToCache(query, results); // Cache the results
+      return results;
     }
+
+    // Detect individual protein queries
+    if (lowerQuery.includes('meat')) {
+      console.log('Detected meat dish query, using specialized meat search');
+      const results = await this.specializedProteinSearch('meat');
+      this.saveToCache(query, results); // Cache the results
+      return results;
+    }
+
+    if (lowerQuery.includes('chicken')) {
+      console.log('Detected chicken dish query, using specialized chicken search');
+      const results = await this.specializedProteinSearch('chicken');
+      this.saveToCache(query, results); // Cache the results
+      return results;
+    }
+
+    // Handle empty queries by returning popular recipes
+    if (!query.trim()) {
+      console.log('Empty query detected, returning default recommendations');
+      const popularRecipes = await this.getPopularRecipes();
+      this.saveToCache(query, popularRecipes); // Cache the results
+      return popularRecipes;
+    }
+
+    // Default fallback behavior
+    console.log('Fallback search executed for query:', query);
+    const results = await this.defaultFallbackSearch(query); // Use default fallback method
+    this.saveToCache(query, results); // Cache the results
+    return results;
   }
-  
+
+  /**
+   * Default fallback search logic to handle queries without recursion
+   */
+  private async defaultFallbackSearch(query: string): Promise<any[]> {
+    console.log('Executing default fallback search for query:', query);
+
+    // Example logic: Return popular recipes as a fallback
+    const sqlQuery = `
+      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
+      FROM recipes r
+      ORDER BY r.popularity DESC
+      LIMIT 20
+    `;
+    const result = await this.pool.query(sqlQuery);
+    return result.rows;
+  }
+
+  /**
+   * Fetch popular recipes for default recommendations
+   */
+  private async getPopularRecipes(): Promise<any[]> {
+    const sqlQuery = `
+      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
+      FROM recipes r
+      ORDER BY r.popularity DESC
+      LIMIT 20
+    `;
+    const result = await this.pool.query(sqlQuery);
+    return result.rows;
+  }
+
   /**
    * Track consecutive failures to disable AI temporarily after too many failures
    */
@@ -1134,7 +1092,7 @@ Be very concise. Keep arrays empty if not mentioned.`;
   }
 
   /**
-   * Parse the AI response
+   * Parse the AI response with robust error handling for incomplete JSON
    */
   private async parseAIResponse(aiAnalysisResponse: string, userQuery: string): Promise<any> {
     try {
@@ -1149,7 +1107,10 @@ Be very concise. Keep arrays empty if not mentioned.`;
       
       // Try to parse the JSON
       try {
-        const aiAnalysis = JSON.parse(jsonText.replace(/\\n/g, ' '));
+        // Clean up the JSON text before parsing
+        jsonText = this.sanitizeJsonString(jsonText);
+        
+        const aiAnalysis = JSON.parse(jsonText);
         
         // Create default arrays for any missing fields to avoid null pointer exceptions
         aiAnalysis.mainDish = aiAnalysis.mainDish || [];
@@ -1158,19 +1119,360 @@ Be very concise. Keep arrays empty if not mentioned.`;
         aiAnalysis.excludeIngredients = aiAnalysis.excludeIngredients || [];
         aiAnalysis.dietaryPreferences = aiAnalysis.dietaryPreferences || [];
         aiAnalysis.cookingMethods = aiAnalysis.cookingMethods || [];
+        aiAnalysis.explanation = aiAnalysis.explanation || "Recipe search based on your preferences";
 
         // Apply special post-processing for dietary requirements
         this.processDietaryRequirements(aiAnalysis, userQuery);
         
+        // Process the original query to identify cuisine information that might have been missed
+        this.extractMissedCuisineInformation(aiAnalysis, userQuery);
+
+        // Expand 'dairy products' into specific ingredients
+        const dairyProducts = ['milk', 'cheese', 'butter', 'sour cream', 'yogurt', 'cream', 'ice cream', 'whey', 'casein', 'ghee'];
+        if (aiAnalysis.excludeIngredients.includes('dairy products')) {
+            aiAnalysis.excludeIngredients = (aiAnalysis.excludeIngredients as string[]).filter((ingredient: string) => ingredient !== 'dairy products');
+          aiAnalysis.excludeIngredients.push(...dairyProducts);
+        }
+        
         return aiAnalysis;
       } catch (parseError) {
-        console.log('JSON parse attempt failed, trying fallback parsing');
+        console.log('Standard JSON parse attempt failed, trying advanced parsing:', parseError);
+        
+        // Try more advanced recovery techniques
+        const recoveredJson = this.attemptJsonRecovery(jsonText);
+        if (recoveredJson) {
+          console.log('Successfully recovered JSON structure');
+          return recoveredJson;
+        }
+        
+        console.log('Advanced parsing failed, using fallback analysis');
         return this.createFallbackAnalysis(userQuery);
       }
     } catch (error) {
       console.error('Error parsing AI response:', error);
       return this.createFallbackAnalysis(userQuery);
     }
+  }
+  
+  /**
+   * Clean up and sanitize JSON string for parsing
+   */
+  private sanitizeJsonString(jsonStr: string): string {
+    // Replace common issues that cause parsing errors
+    let cleaned = jsonStr
+      .replace(/\\n/g, ' ')                 // Replace newlines with spaces
+      .replace(/,\s*}/g, '}')               // Remove trailing commas
+      .replace(/,\s*]/g, ']')               // Remove trailing commas in arrays
+      .replace(/(['"])?([a-zA-Z0-9_]+)(['"])?\s*:/g, '"$2": ')  // Ensure property names are quoted
+      .replace(/\t/g, ' ')                  // Replace tabs with spaces
+      .replace(/\n/g, ' ');                 // Replace literal newlines
+    
+    // Fix unbalanced braces/brackets
+    const openBraces = (cleaned.match(/\{/g) || []).length;
+    const closeBraces = (cleaned.match(/\}/g) || []).length;
+    const openBrackets = (cleaned.match(/\[/g) || []).length;
+    const closeBrackets = (cleaned.match(/\]/g) || []).length;
+    
+    // Add missing closing braces
+    if (openBraces > closeBraces) {
+      cleaned += '}'.repeat(openBraces - closeBraces);
+    }
+    
+    // Add missing closing brackets
+    if (openBrackets > closeBrackets) {
+      cleaned += ']'.repeat(openBrackets - closeBrackets);
+    }
+    
+    return cleaned;
+  }
+  
+  /**
+   * Try to recover JSON from incomplete or malformed response
+   */
+  private attemptJsonRecovery(jsonStr: string): any | null {
+    try {
+      // Strategy 1: Try to extract partial JSON properties
+      const analysis: any = {
+        mainDish: [],
+        cuisines: [],
+        includeIngredients: [],
+        excludeIngredients: [],
+        dietaryPreferences: [],
+        cookingMethods: [],
+        explanation: "Recipe search based on extracted preferences"
+      };
+      
+      // Look for array values with regex
+      const arrayProps = [
+        { name: 'mainDish', regex: /"mainDish"\s*:\s*\[([\s\S]*?)\]/ },
+        { name: 'cuisines', regex: /"cuisines"\s*:\s*\[([\s\S]*?)\]/ },
+        { name: 'includeIngredients', regex: /"includeIngredients"\s*:\s*\[([\s\S]*?)\]/ },
+        { name: 'excludeIngredients', regex: /"excludeIngredients"\s*:\s*\[([\s\S]*?)\]/ },
+        { name: 'dietaryPreferences', regex: /"dietaryPreferences"\s*:\s*\[([\s\S]*?)\]/ },
+        { name: 'cookingMethods', regex: /"cookingMethods"\s*:\s*\[([\s\S]*?)\]/ },
+      ];
+      
+      // Extract arrays for each property
+      for (const prop of arrayProps) {
+        const match = jsonStr.match(prop.regex);
+        if (match && match[1]) {
+          try {
+            // Try to parse as JSON array
+            const itemsStr = `[${match[1]}]`;
+            const items = JSON.parse(this.sanitizeJsonString(itemsStr));
+            if (Array.isArray(items)) {
+              analysis[prop.name] = items;
+            }
+          } catch (e) {
+            // If that fails, try to extract quoted strings manually
+            const itemMatches = match[1].match(/"([^"]*)"/g) || [];
+            analysis[prop.name] = itemMatches.map(m => m.replace(/"/g, ''));
+          }
+        }
+      }
+      
+      // Extract explanation
+      const explanationMatch = jsonStr.match(/"explanation"\s*:\s*"([^"]*)"/);
+      if (explanationMatch && explanationMatch[1]) {
+        analysis.explanation = explanationMatch[1];
+      }
+      
+      // Check if we extracted anything useful
+      const extractedSomething = arrayProps.some(prop => 
+        Array.isArray(analysis[prop.name]) && analysis[prop.name].length > 0
+      );
+      
+      return extractedSomething ? analysis : null;
+    } catch (error) {
+      console.error('Error in JSON recovery attempt:', error);
+      return null;
+    }
+  }
+  
+  /**
+   * Process dietary requirements that might have been missed by the LLM
+   */
+  private processDietaryRequirements(aiAnalysis: any, userQuery: string): void {
+    const query = userQuery.toLowerCase();
+
+    // If no dietary preferences were identified, check for common dietary keywords
+    if (!aiAnalysis.dietaryPreferences || aiAnalysis.dietaryPreferences.length === 0) {
+      const dietaryKeywords: {[key: string]: string} = {
+        'vegan': 'vegan',
+        'vegetarian': 'vegetarian',
+        'kosher': 'kosher',
+        'halal': 'halal',
+        'gluten-free': 'gluten-free',
+        'dairy-free': 'dairy-free',
+        'lactose-free': 'dairy-free',
+        'nut-free': 'nut-free',
+        'low carb': 'low-carb',
+        'keto': 'keto'
+      };
+
+      // Check if query mentions any dietary preference
+      for (const [keyword, preference] of Object.entries(dietaryKeywords)) {
+        if (query.includes(keyword)) {
+          console.log(`Identified missed dietary preference: ${preference} from query`);
+          aiAnalysis.dietaryPreferences.push(preference);
+        }
+      }
+    }
+
+    // Check for patterns like "without dairy" or "no meat"
+    const exclusionPatterns = [
+      { regex: /without\s+([a-zA-Z\s]+)/i, type: 'excludeIngredients' },
+      { regex: /no\s+([a-zA-Z\s]+)/i, type: 'excludeIngredients' },
+      { regex: /don'?t\s+(?:like|want|eat)\s+([a-zA-Z\s]+)/i, type: 'excludeIngredients' }
+    ];
+
+    for (const pattern of exclusionPatterns) {
+      const match = query.match(pattern.regex);
+      if (match && match[1]) {
+        const excluded = match[1].trim().toLowerCase();
+        
+        // Check if the exclusion is a dietary category
+        if (excluded === 'meat' || excluded === 'animal products') {
+          if (!aiAnalysis.dietaryPreferences.includes('vegetarian')) {
+            console.log('Detected vegetarian preference from exclusion pattern');
+            aiAnalysis.dietaryPreferences.push('vegetarian');
+          }
+        } else if (excluded === 'dairy' || excluded === 'milk') {
+          if (!aiAnalysis.dietaryPreferences.includes('dairy-free')) {
+            console.log('Detected dairy-free preference from exclusion pattern');
+            aiAnalysis.dietaryPreferences.push('dairy-free');
+          }
+        } else if (excluded === 'gluten') {
+          if (!aiAnalysis.dietaryPreferences.includes('gluten-free')) {
+            console.log('Detected gluten-free preference from exclusion pattern');
+            aiAnalysis.dietaryPreferences.push('gluten-free');
+          }
+        } else {
+          // Add to excluded ingredients if not already there
+          if (!aiAnalysis.excludeIngredients.some((item: string) => item.toLowerCase() === excluded)) {
+            console.log(`Adding excluded ingredient from pattern: ${excluded}`);
+            aiAnalysis.excludeIngredients.push(excluded);
+          }
+        }
+      }
+    }
+  }
+
+  /**
+   * Extract cuisine information that might have been missed by the LLM
+   */
+  private extractMissedCuisineInformation(aiAnalysis: any, userQuery: string): void {
+    const query = userQuery.toLowerCase();
+    
+    // If the LLM didn't identify cuisines but the query contains cuisine keywords, add them
+    if ((!aiAnalysis.cuisines || aiAnalysis.cuisines.length === 0)) {
+      // Common cuisine keywords
+      const cuisineKeywords: {[key: string]: string} = {
+        'american': 'American',
+        'italian': 'Italian', 
+        'mexican': 'Mexican', 
+        'chinese': 'Chinese',
+        'japanese': 'Japanese', 
+        'thai': 'Thai', 
+        'indian': 'Indian',
+        'french': 'French', 
+        'mediterranean': 'Mediterranean',
+        'greek': 'Greek',
+        'spanish': 'Spanish',
+        'middle eastern': 'Middle Eastern',
+        'korean': 'Korean',
+        'vietnamese': 'Vietnamese'
+      };
+      
+      // Check if the query mentions any cuisine
+      for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+        if (query.includes(keyword)) {
+          console.log(`Identified missed cuisine: ${cuisine} from query`);
+          aiAnalysis.cuisines.push(cuisine);
+        }
+      }
+    }
+    
+    // Also check for phrases like "from X cuisine" or "X style"
+    const cuisinePatterns = [
+      /from\s+([a-zA-Z\s]+)\s+cuisine/i,
+      /([a-zA-Z]+)\s+style\s+recipes/i,
+      /([a-zA-Z]+)\s+dishes/i
+    ];
+    
+    for (const pattern of cuisinePatterns) {
+      const match = query.match(pattern);
+      if (match && match[1]) {
+        const potentialCuisine = match[1].trim();
+        
+        // Avoid adding very short terms or duplicates
+        if (potentialCuisine.length > 3 && 
+            !aiAnalysis.cuisines.some((c: string) => 
+              c.toLowerCase() === potentialCuisine.toLowerCase())) {
+          // Capitalize first letter
+          const formattedCuisine = potentialCuisine.charAt(0).toUpperCase() + 
+                                  potentialCuisine.slice(1).toLowerCase();
+          console.log(`Extracted cuisine from pattern: ${formattedCuisine}`);
+          aiAnalysis.cuisines.push(formattedCuisine);
+        }
+      }
+    }
+  }
+
+  /**
+   * Extract cuisines from user query text
+   * Used when the LLM doesn't identify a cuisine
+   */
+  private extractCuisinesFromQuery(query: string): string[] {
+    const cuisines: string[] = [];
+    const lowerQuery = query.toLowerCase();
+    
+    // Common cuisine keywords to check for
+    const cuisineKeywords: {[key: string]: string} = {
+      'american': 'American',
+      'italian': 'Italian', 
+      'mexican': 'Mexican', 
+      'chinese': 'Chinese',
+      'japanese': 'Japanese', 
+      'thai': 'Thai', 
+      'indian': 'Indian',
+      'french': 'French', 
+      'mediterranean': 'Mediterranean',
+      'greek': 'Greek',
+      'spanish': 'Spanish',
+      'middle eastern': 'Middle Eastern',
+      'korean': 'Korean',
+      'vietnamese': 'Vietnamese',
+      'jewish': 'Jewish',
+      'german': 'German',
+      'ethiopian': 'Ethiopian',
+      'african': 'African',
+      'brazilian': 'Brazilian',
+      'caribbean': 'Caribbean'
+    };
+    
+    // Check for direct mentions of cuisines
+    for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+      if (lowerQuery.includes(keyword)) {
+        console.log(`Extracted cuisine from query: ${cuisine}`);
+        cuisines.push(cuisine);
+      }
+    }
+    
+    // Check for phrases like "from X cuisine" or "X style"
+    const cuisinePatterns = [
+      /from\s+([a-zA-Z\s]+)\s+cuisine/i,
+      /([a-zA-Z]+)\s+style\s+food/i,
+      /([a-zA-Z]+)\s+style\s+recipe/i,
+      /([a-zA-Z]+)\s+dishes/i
+    ];
+    
+    for (const pattern of cuisinePatterns) {
+      const match = lowerQuery.match(pattern);
+      if (match && match[1]) {
+        const potentialCuisine = match[1].trim();
+        
+        // Skip if very short
+        if (potentialCuisine.length > 3) {
+          // Capitalize first letter
+          const formattedCuisine = potentialCuisine.charAt(0).toUpperCase() + 
+                                  potentialCuisine.slice(1);
+          
+          // Avoid duplicates
+          if (!cuisines.includes(formattedCuisine)) {
+            console.log(`Extracted cuisine from pattern: ${formattedCuisine}`);
+            cuisines.push(formattedCuisine);
+          }
+        }
+      }
+    }
+    
+    // Check for cuisine-specific dishes that imply a cuisine
+    const dishCuisineMap: Record<string, string> = {
+      'pizza': 'Italian',
+      'pasta': 'Italian',
+      'sushi': 'Japanese',
+      'curry': 'Indian',
+      'taco': 'Mexican',
+      'burrito': 'Mexican',
+      'pad thai': 'Thai',
+      'stir fry': 'Chinese',
+      'paella': 'Spanish',
+      'goulash': 'Hungarian',
+      'gyro': 'Greek',
+      'falafel': 'Middle Eastern',
+      'schnitzel': 'German',
+      'crepe': 'French'
+    };
+    
+    for (const [dish, cuisine] of Object.entries(dishCuisineMap)) {
+      if (lowerQuery.includes(dish) && !cuisines.includes(cuisine)) {
+        console.log(`Inferred cuisine ${cuisine} from dish ${dish}`);
+        cuisines.push(cuisine);
+      }
+    }
+    
+    return cuisines;
   }
 
   /**
@@ -1183,140 +1485,234 @@ Be very concise. Keep arrays empty if not mentioned.`;
     // Extract dietary preferences
     const dietaryPreferences = [];
     
-    // Detect kosher requirement
-    if (query.includes('kosher')) {
-      dietaryPreferences.push({
-        name: 'kosher',
-        value: true
-      });
+    // Detect dietary requirements
+    const dietaryKeywords = {
+      'kosher': 'kosher',
+      'vegan': 'vegan',
+      'vegetarian': 'vegetarian',
+      'gluten-free': 'gluten-free',
+      'gluten free': 'gluten-free',
+      'dairy-free': 'dairy-free',
+      'dairy free': 'dairy-free',
+      'keto': 'keto',
+      'low carb': 'low-carb',
+      'paleo': 'paleo'
+    };
+    
+    // Check for dietary preferences
+    for (const [keyword, value] of Object.entries(dietaryKeywords)) {
+      if (query.includes(keyword)) {
+        dietaryPreferences.push(value);
+      }
+    }
+    
+    // Extract cuisines mentioned in the query
+    const cuisines = [];
+    const cuisineKeywords = {
+      'american': 'American',
+      'italian': 'Italian', 
+      'mexican': 'Mexican', 
+      'chinese': 'Chinese',
+      'japanese': 'Japanese', 
+      'thai': 'Thai', 
+      'indian': 'Indian',
+      'french': 'French', 
+      'mediterranean': 'Mediterranean',
+      'greek': 'Greek',
+      'spanish': 'Spanish',
+      'middle eastern': 'Middle Eastern',
+      'korean': 'Korean',
+      'vietnamese': 'Vietnamese',
+      'jewish': 'Jewish',
+      'german': 'German',
+      'ethiopian': 'Ethiopian',
+      'african': 'African',
+      'brazilian': 'Brazilian',
+      'caribbean': 'Caribbean'
+    };
+    
+    // Check if the query mentions any cuisine
+    for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+      if (query.includes(keyword)) {
+        console.log(`Identified cuisine in fallback: ${cuisine}`);
+        cuisines.push(cuisine);
+      }
+    }
+    
+    // Check for cuisine patterns like "from X cuisine"
+    const cuisinePatterns = [
+      /from\s+([a-zA-Z\s]+)\s+cuisine/i,
+      /([a-zA-Z]+)\s+style\s+food/i,
+      /([a-zA-Z]+)\s+dishes/i
+    ];
+    
+    for (const pattern of cuisinePatterns) {
+      const match = query.match(pattern);
+      if (match && match[1]) {
+        const potentialCuisine = match[1].trim();
+        
+        // Skip if very short
+        if (potentialCuisine.length > 3) {
+          // Capitalize first letter
+          const formattedCuisine = potentialCuisine.charAt(0).toUpperCase() + 
+                                  potentialCuisine.slice(1).toLowerCase();
+          
+          // Avoid duplicates
+          if (!cuisines.includes(formattedCuisine)) {
+            console.log(`Extracted cuisine from pattern: ${formattedCuisine}`);
+            cuisines.push(formattedCuisine);
+          }
+        }
+      }
     }
     
     // Extract likes and dislikes
-    const includeIngredients = [];
-    const excludeIngredients = [];
+    const includeIngredients: string[] = [];
+    const excludeIngredients: string[] = [];
     const mainDish = [];
     
-    // Check for specific foods mentioned in the query
-    if (query.includes('challah') || query.includes('chalah') || query.includes('hallah')) {
-      includeIngredients.push('bread');
-      mainDish.push('challah');
+    // Extract ingredients the user wants
+    const positivePatterns = [
+      /(?:i like|i want|i love|with|include|add|using|made with|containing)(?:\s+\w+)?\s+(\w+)/gi,
+      /(?:i'm looking for)(?:\s+\w+)?\s+(\w+)(?:\s+recipes)/gi
+    ];
+    
+    for (const pattern of positivePatterns) {
+      const matches = [...query.matchAll(pattern)];
+      if (matches.length > 0) {
+        matches.forEach(match => {
+          if (match[1] && match[1].length > 2) {
+            const ingredient = match[1].toLowerCase();
+            if (!includeIngredients.includes(ingredient)) {
+              includeIngredients.push(ingredient);
+            }
+          }
+        });
+      }
     }
     
-    // Process kosher requirements
-    if (query.includes('kosher')) {
-      // Exclude non-kosher combinations
-      excludeIngredients.push('pork');
-      excludeIngredients.push('shellfish');
-      excludeIngredients.push('seafood');
+    // Extract ingredients the user doesn't want
+    const negativePatterns = [
+      /(?:i (?:don't|dont|do not) (?:like|want)|without|no|not|exclude)(?:\s+\w+)?\s+(\w+)/gi,
+      /(?:no)(?:\s+\w+)?\s+(\w+)(?:\s+(?:please|thanks))?/gi
+    ];
+    
+    for (const pattern of negativePatterns) {
+      const matches = [...query.matchAll(pattern)];
+      if (matches.length > 0) {
+        matches.forEach(match => {
+          if (match[1] && match[1].length > 2) {
+            const ingredient = match[1].toLowerCase();
+            if (!excludeIngredients.includes(ingredient)) {
+              excludeIngredients.push(ingredient);
+            }
+          }
+        });
+      }
     }
     
-    // Process traditional Jewish food preferences
-    if (query.includes('matzo') || query.includes('matzah') || query.includes('matza')) {
-      includeIngredients.push('matzo');
+    // Extract dish types
+    const dishPatterns = [
+      /(?:i want|looking for|need)(?:\s+\w+)?\s+(\w+)(?:\s+recipe)/i,
+      /(?:how to make|make)(?:\s+\w+)?\s+(\w+)/i
+    ];
+    
+    for (const pattern of dishPatterns) {
+      const match = query.match(pattern);
+      if (match && match[1]) {
+        const dish = match[1].toLowerCase();
+        if (dish.length > 2) {
+          mainDish.push(dish);
+        }
+      }
     }
     
-    if (query.includes('brisket')) {
-      includeIngredients.push('brisket');
+    // Common foods that might be specified directly
+    const commonFoods = ['pasta', 'pizza', 'soup', 'salad', 'sandwich', 'bread', 'cake', 'pie', 'cookie', 
+                        'stew', 'curry', 'burger', 'taco', 'burrito', 'sushi', 'rice', 'noodle'];
+    
+    for (const food of commonFoods) {
+      if (query.includes(food) && !mainDish.includes(food)) {
+        mainDish.push(food);
+      }
     }
     
-    // If no specific ingredients were identified, add some defaults
-    if (includeIngredients.length === 0 && !query.includes('kosher')) {
-      includeIngredients.push('chicken');
+    // Common ingredients
+    const commonIngredients = ['cheese', 'chicken', 'beef', 'pork', 'fish', 'shrimp', 'tomato',
+                             'garlic', 'onion', 'potato', 'carrot', 'broccoli', 'spinach', 'mushroom'];
+    
+    for (const ingredient of commonIngredients) {
+      if (query.includes(ingredient) && 
+          !includeIngredients.includes(ingredient) && 
+          !excludeIngredients.includes(ingredient)) {
+        includeIngredients.push(ingredient);
+      }
+    }
+    
+    // If no specific cuisines were identified but dish types suggest a cuisine, add it
+    if (cuisines.length === 0) {
+      const dishCuisineMap: Record<string, string> = {
+        'pizza': 'Italian',
+        'pasta': 'Italian',
+        'sushi': 'Japanese',
+        'curry': 'Indian',
+        'taco': 'Mexican',
+        'burrito': 'Mexican',
+        'stir fry': 'Chinese'
+      };
+      
+      for (const dish of mainDish) {
+        if (dishCuisineMap[dish]) {
+          cuisines.push(dishCuisineMap[dish]);
+          break;
+        }
+      }
     }
     
     // Create basic analysis object
     const result = {
       mainDish: mainDish,
-      cuisines: [],
+      cuisines: cuisines,
       includeIngredients: includeIngredients,
       excludeIngredients: excludeIngredients,
       dietaryPreferences: dietaryPreferences,
       cookingMethods: [],
-      explanation: "Found recipes based on your dietary preferences"
+      explanation: "Found recipes based on your preferences"
     };
     
     console.log('Created fallback analysis from query:', result);
     return result;
   }
-
-  /**
-   * Process dietary requirements in the AI analysis
-   */
-  private processDietaryRequirements(aiAnalysis: any, userQuery: string): void {
-    const query = userQuery.toLowerCase();
-    
-    // Handle kosher requirements
-    if (query.includes('kosher')) {
-      console.log('Detected kosher dietary requirement');
-      
-      // Add kosher as a dietary preference if not already present
-      const hasKosherPreference = aiAnalysis.dietaryPreferences.some((pref: any) => 
-        typeof pref === 'string' 
-          ? pref.toLowerCase() === 'kosher' 
-          : (pref.name && pref.name.toLowerCase() === 'kosher')
-      );
-      
-      if (!hasKosherPreference) {
-        aiAnalysis.dietaryPreferences.push({
-          name: 'kosher',
-          value: true
-        });
-      }
-      
-      // Add non-kosher foods to exclude
-      const nonKosherFoods = ['pork', 'shellfish', 'shrimp', 'crab', 'lobster', 'clam', 'oyster', 'mussel'];
-      nonKosherFoods.forEach(food => {
-        if (!aiAnalysis.excludeIngredients.includes(food)) {
-          aiAnalysis.excludeIngredients.push(food);
-        }
-      });
-      
-      // For strict kosher, we need to avoid mixing meat and dairy in the same recipe
-      const hasMeat = this.containsAnyTerms(aiAnalysis.includeIngredients, ['meat', 'beef', 'chicken', 'lamb', 'veal']);
-      const hasDairy = this.containsAnyTerms(aiAnalysis.includeIngredients, ['milk', 'cheese', 'butter', 'cream', 'dairy']);
-      
-      // If both meat and dairy are requested, prioritize meat and remove dairy
-      if (hasMeat && hasDairy) {
-        console.log('Kosher conflict detected: both meat and dairy requested. Prioritizing meat.');
-        const dairyTerms = ['milk', 'cheese', 'butter', 'cream', 'dairy'];
-        aiAnalysis.includeIngredients = aiAnalysis.includeIngredients.filter((ing: string) => 
-          !dairyTerms.some(dairy => ing.includes(dairy)));
-        dairyTerms.forEach(dairy => {
-          if (!aiAnalysis.excludeIngredients.includes(dairy)) {
-            aiAnalysis.excludeIngredients.push(dairy);
-          }
-        });
-      }
-      
-      // Update explanation if kosher is added
-      if (aiAnalysis.explanation && !aiAnalysis.explanation.toLowerCase().includes('kosher')) {
-        aiAnalysis.explanation = `Kosher recipes based on your preferences: ${aiAnalysis.explanation}`;
-      } else {
-        aiAnalysis.explanation = 'Kosher recipes based on your preferences';
-      }
-    }
-    
-    // Handle challah bread
-    if (query.includes('challah') || query.includes('chalah') || query.includes('hallah')) {
-      console.log('Detected challah bread requirement');
-      if (!this.containsAnyTerms(aiAnalysis.mainDish, ['challah', 'bread']) && 
-          !this.containsAnyTerms(aiAnalysis.includeIngredients, ['challah', 'bread'])) {
-        aiAnalysis.mainDish.push('challah');
-        aiAnalysis.includeIngredients.push('bread');
-      }
-    }
-  }
-
-  /**
-   * Check if any of the terms in sourceArray contain any of the terms in targetTerms
-   */
-  private containsAnyTerms(sourceArray: string[], targetTerms: string[]): boolean {
-    if (!Array.isArray(sourceArray)) return false;
-    
-    return sourceArray.some((source: string) => 
-      targetTerms.some(target => 
-        source.toLowerCase().includes(target.toLowerCase())
-      )
-    );
-  }
 }
+
+interface AIResponseAssumptions {
+  mainDish: string[];
+  cuisines: string[];
+  includeIngredients: string[];
+  excludeIngredients: string[];
+  dietaryPreferences: string[];
+  cookingMethods: string[];
+  [key: string]: any; // For any additional fields
+}
+
+function humanizeAIResponse(rawResponse: string): string {
+  const assumptions = rawResponse.match(/\{[^\}]*\}/);
+  if (!assumptions) {
+    return "Sorry, I couldn't extract assumptions from the AI response.";
+  }
+
+  const parsedAssumptions: AIResponseAssumptions = JSON.parse(assumptions[0]);
+  const humanizedResponse = [
+    "Here are the AI's assumptions based on your query:",
+    parsedAssumptions.mainDish.length ? `Main Dish: ${parsedAssumptions.mainDish.join(', ')}` : null,
+    parsedAssumptions.cuisines.length ? `Cuisine: ${parsedAssumptions.cuisines.join(', ')}` : null,
+    parsedAssumptions.includeIngredients.length ? `Included Ingredients: ${parsedAssumptions.includeIngredients.join(', ')}` : null,
+    parsedAssumptions.excludeIngredients.length ? `Excluded Ingredients: ${parsedAssumptions.excludeIngredients.join(', ')}` : null,
+    parsedAssumptions.dietaryPreferences.length ? `Dietary Preferences: ${parsedAssumptions.dietaryPreferences.join(', ')}` : null,
+    parsedAssumptions.cookingMethods.length ? `Cooking Methods: ${parsedAssumptions.cookingMethods.join(', ')}` : null
+  ].filter(Boolean).join('\n');
+
+  return humanizedResponse;
+}
+
+module.exports = { humanizeAIResponse };

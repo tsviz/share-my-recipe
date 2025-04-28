@@ -1,5 +1,3 @@
-version: '3'
-
 services:
   # PostgreSQL database
   postgres:
@@ -7,8 +5,8 @@ services:
     environment:
       POSTGRES_PASSWORD: yourpassword
       POSTGRES_DB: postgres
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
+    # volumes:
+    #   - postgres_data:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     healthcheck:
@@ -33,16 +31,18 @@ services:
       - DB_PASSWORD=yourpassword
       - DB_NAME=postgres
       - LLM_SERVICE_URL=http://ollama:11434
+      - LLM_MODEL=tinyllama
       - OLLAMA_MODEL=tinyllama
+      - REQUEST_TIMEOUT=120000 # Increase timeout to 120 seconds
     ports:
       - "3000:3000"
-    volumes:
-      # Mount everything except node_modules and use a named volume for node_modules
-      - ./src:/app/src
-      - ./package.json:/app/package.json
-      - ./package-lock.json:/app/package-lock.json
-      - ./tsconfig.json:/app/tsconfig.json
-      - recipe_app_node_modules:/app/node_modules
+    # volumes:
+    #   # Mount everything except node_modules and use a named volume for node_modules
+    #   - ./src:/app/src
+    #   - ./package.json:/app/package.json
+    #   - ./package-lock.json:/app/package-lock.json
+    #   - ./tsconfig.json:/app/tsconfig.json
+    #   - recipe_app_node_modules:/app/node_modules
 
   # Liquibase for database migrations
   liquibase:
@@ -60,32 +60,49 @@ services:
       --search-path=/liquibase/changelog/src/db/migrations
       update
 
-  # Ollama LLM service
+  # Ollama with memory-efficient configuration
   ollama:
-    image: ollama/ollama:latest
+    image: ollama/ollama:latest  # This image supports ARM64/Apple Silicon natively
     volumes:
       - ollama_data:/root/.ollama
     ports:
       - "11434:11434"
-    command: ["serve"]
     restart: always
-    # Allocate more resources to Ollama
+    # Adjust resource allocation to ensure we don't run out of memory
     deploy:
       resources:
         limits:
-          cpus: '5' 
-          memory: 10G
+          cpus: '10' # Increase CPU allocation to 16
+          memory: 64G # Increase memory allocation to 64GB
         reservations:
-          cpus: '4'   
-          memory: 4G 
+          cpus: '10' # Reserve 16 CPUs
+          memory: 64G # Reserve 64GB
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_KEEP_ALIVE=5m
-      # GPU environment variables (if available)
-      - NVIDIA_VISIBLE_DEVICES=all
-      - CUDA_VISIBLE_DEVICES=all
+      # Add memory-specific settings to optimize for limited memory
+      - OLLAMA_MODEL_PATH=/root/.ollama/models
+      - OLLAMA_THREADS=32 # Increase threads to utilize more CPUs
+      - OLLAMA_PARALLEL=16 # Increase parallelism for better performance
+      - OLLAMA_MEMORY_LIMIT=48G
+
+    entrypoint: >
+      sh -c "
+        # Start ollama service
+        ollama serve &
+        
+        # Wait for ollama to be ready
+        sleep 10
+        
+        # Pull the tinyllama model explicitly
+        echo 'Pulling tinyllama model (smaller memory footprint)...'
+        ollama pull tinyllama
+        
+        # Keep container running
+        wait
+      "
 
 volumes:
-  postgres_data:
+  # postgres_data:
   ollama_data:
-  recipe_app_node_modules:
+  # recipe_app_node_modules:
