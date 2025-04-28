@@ -31,8 +31,8 @@ services:
       - DB_PASSWORD=yourpassword
       - DB_NAME=postgres
       - LLM_SERVICE_URL=http://ollama:11434
-      - LLM_MODEL=tinyllama
-      - OLLAMA_MODEL=tinyllama
+      - LLM_MODEL=llama-2-7b-chat-q4 # Switch to a larger model for better resource utilization
+      - OLLAMA_MODEL=llama-2-7b-chat-q4
       - REQUEST_TIMEOUT=120000 # Increase timeout to 120 seconds
     ports:
       - "3000:3000"
@@ -72,19 +72,24 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '10' # Increase CPU allocation to 16
+          cpus: '10' # Increase CPU allocation to 10
           memory: 64G # Increase memory allocation to 64GB
         reservations:
-          cpus: '10' # Reserve 16 CPUs
+          cpus: '10' # Reserve 10 CPUs
           memory: 64G # Reserve 64GB
     environment:
       - OLLAMA_HOST=0.0.0.0
       - OLLAMA_KEEP_ALIVE=5m
       # Add memory-specific settings to optimize for limited memory
       - OLLAMA_MODEL_PATH=/root/.ollama/models
-      - OLLAMA_THREADS=32 # Increase threads to utilize more CPUs
-      - OLLAMA_PARALLEL=16 # Increase parallelism for better performance
-      - OLLAMA_MEMORY_LIMIT=48G
+      - OLLAMA_THREADS=8 # Reduce threads for better stability
+      - OLLAMA_PARALLEL=4 # Reduce parallelism to improve stability
+      - OLLAMA_BATCH_SIZE=512 # Smaller batch size for more reliable processing
+      - OLLAMA_CONTEXT_SIZE=4096 # Keep context size consistent
+      - OLLAMA_MEMORY_LIMIT=24G # Lower memory limit for better system stability
+      - OLLAMA_EMBEDDING_ASI=true # Enable alignment scanning for better performance
+      - OLLAMA_USE_MLOCK=true # Prevent memory swapping
+      - OLLAMA_NUM_GPU=0 # CPU-only mode for better compatibility
 
     entrypoint: >
       sh -c "
@@ -92,11 +97,15 @@ services:
         ollama serve &
         
         # Wait for ollama to be ready
-        sleep 10
+        sleep 15
         
-        # Pull the tinyllama model explicitly
-        echo 'Pulling tinyllama model (smaller memory footprint)...'
-        ollama pull tinyllama
+        # Check if the model manifest exists before pulling
+        if [ ! -f \"$OLLAMA_MODEL_PATH/llama-2-7b-chat-q4/manifest.json\" ]; then
+          echo 'Model manifest not found. Attempting to pull the model...'
+          ollama pull llama-2-7b-chat-q4 || echo 'Failed to pull the model. Please verify the model name and path.'
+        else
+          echo 'Model manifest found. Skipping pull.'
+        fi
         
         # Keep container running
         wait

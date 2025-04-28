@@ -32,6 +32,30 @@ export class RecipeSearchService {
     
     // Clean cache periodically
     setInterval(() => this.cleanCache(), 10 * 60 * 1000); // Run every 10 minutes
+
+    // Add indexes to improve query performance
+    this.pool.query(`CREATE INDEX IF NOT EXISTS idx_recipes_title ON recipes (title)`);
+    this.pool.query(`CREATE INDEX IF NOT EXISTS idx_recipes_description ON recipes (description)`);
+    this.pool.query(`CREATE INDEX IF NOT EXISTS idx_recipes_cuisine ON recipes (cuisine)`);
+  }
+
+  /**
+   * Retrieve cached data for a given query if it exists and is not expired.
+   */
+  private getFromCache(query: string): any[] | null {
+    if (!this.CACHE_ENABLED) return null;
+
+    const cacheItem = this.cache.get(query);
+    if (cacheItem) {
+      const now = Date.now();
+      if (now - cacheItem.timestamp < this.CACHE_TTL) {
+        return cacheItem.data;
+      } else {
+        // Remove expired cache entry
+        this.cache.delete(query);
+      }
+    }
+    return null;
   }
 
   /**
@@ -63,6 +87,60 @@ export class RecipeSearchService {
     console.log(`Using model ${defaultModel} for structured JSON generation (from defaults)`);
     return defaultModel;
   }
+
+  /**
+   * Reset the failure count and mark AI as available.
+   */
+  private resetFailureCount(): void {
+    this.consecutiveFailures = 0;
+    this.aiAvailable = true;
+  }
+
+  /**
+   * Increment the failure count and mark AI as unavailable if the maximum is reached.
+   */
+  private incrementFailureCount(): void {
+    this.consecutiveFailures++;
+    if (this.consecutiveFailures >= this.MAX_FAILURES) {
+      this.aiAvailable = false;
+      console.log('AI service marked as unavailable due to consecutive failures');
+    }
+  }
+
+  /**
+   * Optimize the prompt to reduce LLM processing time.
+   */
+  private generateOptimizedPrompt(userQuery: string): string {
+    return `Extract the following fields as a JSON object from the user query:
+    {
+      "mainDish": [],
+      "cuisines": [],
+      "includeIngredients": [],
+      "excludeIngredients": [],
+      "dietaryPreferences": [],
+      "cookingMethods": []
+    }
+    User query: "${userQuery}"
+    Only return the JSON object.`;
+  }
+
+  /**
+   * Analyze the user query using the LLM to extract structured search parameters.
+   */
+  private async analyzeQueryWithAI(userQuery: string): Promise<any> {
+    try {
+      const model = this.selectModelForQuery(userQuery);
+      const prompt = this.generateOptimizedPrompt(userQuery);
+      const aiResponse = await this.llmClient.generateCompletion(prompt, { model });
+      const aiAnalysis = await this.parseAIResponse(aiResponse, userQuery);
+      this.resetFailureCount();
+      return aiAnalysis;
+    } catch (error) {
+      this.incrementFailureCount();
+      console.error('Error in analyzeQueryWithAI:', error);
+      return this.createFallbackAnalysis(userQuery);
+    }
+  }
   
   /**
    * Search recipes with AI-enhanced understanding of user's preferences
@@ -72,16 +150,10 @@ export class RecipeSearchService {
     try {
       console.log('=== USER PREFERENCE DETECTION ===');
       console.log('User input:', userQuery);
-      
-      // If user query is empty, return popular recipes
-      if (!userQuery || userQuery.trim() === '') {
-        console.log('Empty query, returning default recommendations');
-        return this.fallbackSearch('');
-      }
-      
+
       // Normalize query for caching
       const normalizedQuery = userQuery.toLowerCase().trim();
-      
+
       // Check cache first
       if (this.CACHE_ENABLED) {
         const cachedResult = this.getFromCache(normalizedQuery);
@@ -92,7 +164,7 @@ export class RecipeSearchService {
       }
 
       console.log('Starting AI-enhanced recipe search for query:', userQuery);
-      
+
       // Skip AI if we've had too many consecutive failures
       if (!this.aiAvailable) {
         console.log('AI service marked as unavailable due to previous failures, using fallback search');
@@ -100,342 +172,93 @@ export class RecipeSearchService {
         this.saveToCache(normalizedQuery, results);
         return results;
       }
-      
-      // Check if AI service is available and try to prepare the model
-      try {
-        const isHealthy = await this.llmClient.healthCheck().catch(() => false);
-        if (!isHealthy) {
-          this.incrementFailureCount();
-          console.log('AI service health check failed, using fallback search');
-          const results = await this.fallbackSearch(userQuery);
-          this.saveToCache(normalizedQuery, results);
-          return results;
-        }
-        
-        // If health check passed, assume model is available
-      } catch (error) {
-        this.incrementFailureCount();
-        console.log('Error checking AI service health:', error);
-        const results = await this.fallbackSearch(userQuery);
-        this.saveToCache(normalizedQuery, results);
-        return results;
-      }
-      
-      // If query is simple (just a few words), use direct search for better performance
-      // This bypasses the LLM for very basic queries like "pasta" or "chicken soup"
-      if (this.isSimpleQuery(normalizedQuery)) {
-        console.log('Simple query detected, using optimized search');
-        const results = await this.optimizedSearch(userQuery);
-        this.saveToCache(normalizedQuery, results);
-        return results;
-      }
-      
-      // Select the appropriate model for this query and ensure it's set in the client
-      const modelToUse = this.selectModelForQuery(userQuery);
-      
-      // Generate prompt for the LLM to analyze the user's query
-      // This is where we ask the LLM to translate the natural language query into structured search parameters
-      const prompt = `You are a cooking assistant analyzing a recipe search query to extract structured information.
 
-TASK: Analyze this query and extract search parameters in JSON format:
-"${userQuery}"
-
-INSTRUCTIONS:
-1. Think step by step about what the user is looking for in a recipe.
-2. Consider the cuisine type (American, Italian, etc.), ingredients they want to include or exclude, and any dietary preferences.
-3. Format your response ONLY as a valid JSON object with these exact fields:
-
-{
-  "mainDish": [],      // Main dish types mentioned (e.g., "pasta", "soup", "pizza")
-  "cuisines": [],      // Cuisine types (e.g., "American", "Italian", "Mexican")
-  "includeIngredients": [], // Ingredients the user wants to include
-  "excludeIngredients": [], // Ingredients the user wants to exclude or doesn't like
-  "dietaryPreferences": [], // Dietary requirements (e.g., "vegetarian", "kosher")
-  "cookingMethods": [], // Cooking methods (e.g., "bake", "grill", "fry")
-  "explanation": ""    // Brief explanation of what was understood from the query
-}
-
-IMPORTANT:
-- Respond with ONLY the JSON object above, nothing else.
-- Use empty arrays ([]) when nothing is mentioned for a category.
-- For queries like "I like X but not Y", put X in includeIngredients and Y in excludeIngredients.
-- If a cuisine is mentioned (e.g., American, Italian), be sure to include it in the cuisines array.
-- Check specifically for dietary preferences like vegetarian, vegan, kosher, gluten-free, etc.
-
-EXAMPLES:
-
-Query: "I want vegetarian pasta without mushrooms"
-{
-  "mainDish": ["pasta"],
-  "cuisines": ["Italian"],
-  "includeIngredients": [],
-  "excludeIngredients": ["mushrooms"],
-  "dietaryPreferences": ["vegetarian"],
-  "cookingMethods": [],
-  "explanation": "Vegetarian pasta dishes without mushrooms"
-}
-
-Query: "Show me American cheese recipes"
-{
-  "mainDish": [],
-  "cuisines": ["American"],
-  "includeIngredients": ["cheese"],
-  "excludeIngredients": [],
-  "dietaryPreferences": [],
-  "cookingMethods": [],
-  "explanation": "American cuisine recipes with cheese"
-}
-
-Query: "I love spicy Mexican food but I'm allergic to cilantro"
-{
-  "mainDish": [],
-  "cuisines": ["Mexican"],
-  "includeIngredients": ["spicy"],
-  "excludeIngredients": ["cilantro"],
-  "dietaryPreferences": [],
-  "cookingMethods": [],
-  "explanation": "Spicy Mexican dishes without cilantro"
-}
-
-Remember to output ONLY the JSON object.`;
-
-      // Get AI analysis of the user query
-      const aiAnalysisResponse = await this.llmClient.generateCompletion(prompt, { model: modelToUse });
-      console.log('Raw AI response:', aiAnalysisResponse);
-      
-      // Check if the response contains an error message
-      if (aiAnalysisResponse.startsWith('Error generating AI response:')) {
-        this.incrementFailureCount();
-        console.log('AI service returned an error response, using fallback search');
-        const results = await this.fallbackSearch(userQuery);
-        this.saveToCache(normalizedQuery, results);
-        return results;
-      }
-
-      // Reset the failure counter since we got a successful response
-      this.resetFailureCount();
-      
-      // Parse the AI response
-      let aiAnalysis;
-      try {
-        aiAnalysis = await this.parseAIResponse(aiAnalysisResponse, userQuery);
-      } catch (error) {
-        console.error('Error parsing AI response:', error);
-        // Fall back to standard search on parsing error
-        const results = await this.fallbackSearch(userQuery);
-        this.saveToCache(normalizedQuery, results);
-        return results;
-      }
-      
+      // AI analysis and SQL query generation
+      const aiAnalysis = await this.analyzeQueryWithAI(userQuery);
       console.log('AI analysis of query:', aiAnalysis);
-      
-      // Expand 'dairy products' into specific ingredients
-      const dairyProducts = ['milk', 'cheese', 'butter', 'sour cream', 'yogurt', 'cream', 'ice cream', 'whey', 'casein', 'ghee'];
-      if (aiAnalysis.excludeIngredients.includes('dairy products')) {
-        aiAnalysis.excludeIngredients = (aiAnalysis.excludeIngredients as string[]).filter((ingredient: string) => ingredient !== 'dairy products');
-        aiAnalysis.excludeIngredients.push(...dairyProducts);
-      }
 
-      // Expand 'milk products' into specific terms
-      const milkProducts = ['cheese', 'butter', 'cream', 'milk', 'yogurt', 'sour cream', 'ice cream', 'whey', 'casein', 'ghee'];
-      if (aiAnalysis.excludeIngredients.includes('milk products')) {
-        aiAnalysis.excludeIngredients = (aiAnalysis.excludeIngredients as string[]).filter((ingredient: string) => ingredient !== 'milk products');
-        aiAnalysis.excludeIngredients.push(...milkProducts);
-      }
+      // Dynamically resolve category terms like "vegetables" into their specific items using the glossary service
+      const expandedExclusions: string[][] = await Promise.all(
+        aiAnalysis.excludeIngredients.map(async (ingredient: string): Promise<string[]> => {
+          const resolvedItems: string[] = await this.glossaryService.resolveCategory(ingredient);
+          return resolvedItems.length > 0 ? resolvedItems : [ingredient];
+        })
+      );
 
-      // This is where we translate the structured AI analysis into an efficient SQL query
-      // with appropriate parameters for the database search
-      let sqlQuery = `
-        SELECT r.id, r.title, r.description, r.cuisine, r.category_id 
+      // Flatten the array of resolved exclusions
+      const flattenedExclusions = expandedExclusions.flat();
+
+      // Ensure the SQL query uses the expanded exclusions
+      const sqlQuery: string = `
+        SELECT r.id, r.title, r.description, r.cuisine, r.category_id
         FROM recipes r
         WHERE 1=1
-      `;
-      
-      const sqlParams: any[] = [];
-      let paramIndex = 1;
-
-      // Filter by cuisine if specified
-      if (aiAnalysis.cuisines && aiAnalysis.cuisines.length > 0) {
-        console.log('Adding cuisine filters to SQL query:', aiAnalysis.cuisines);
-        const cuisineParams: string[] = [];
-        aiAnalysis.cuisines.forEach((cuisine: string) => {
-          sqlParams.push(`%${cuisine}%`);
-          cuisineParams.push(`r.cuisine ILIKE $${paramIndex++}`);
-        });
-        if (cuisineParams.length) {
-          sqlQuery += ` AND (${cuisineParams.join(' OR ')})`;
-        }
-      } else {
-        // Instead of defaulting to Jewish food, try to extract cuisine from query
-        // or leave it open if no cuisine is specified
-        const extractedCuisines = this.extractCuisinesFromQuery(userQuery);
-        
-        if (extractedCuisines.length > 0) {
-          console.log('No cuisines specified in AI analysis, using extracted cuisines:', extractedCuisines);
-          const cuisineParams: string[] = [];
-          extractedCuisines.forEach((cuisine: string) => {
-            sqlParams.push(`%${cuisine}%`);
-            cuisineParams.push(`r.cuisine ILIKE $${paramIndex++}`);
-          });
-          sqlQuery += ` AND (${cuisineParams.join(' OR ')})`;
-        } else {
-          console.log('No cuisines detected, not applying cuisine filter');
-          // Don't add any cuisine filter to allow all cuisines
-        }
-      }
-      
-      // Filter for ingredients to include (using recipe_ingredients join)
-      if (aiAnalysis.includeIngredients && aiAnalysis.includeIngredients.length) {
-        sqlQuery += ` AND r.id IN (
-          SELECT ri.recipe_id 
-          FROM recipe_ingredients ri 
-          JOIN ingredients i ON ri.ingredient_id = i.id 
-          WHERE `;
-          
-        const includeIngredientConditions: string[] = [];
-        aiAnalysis.includeIngredients.forEach((ingredient: string) => {
-          includeIngredientConditions.push(`i.name ILIKE $${paramIndex++}`);
-          sqlParams.push(`%${ingredient}%`);
-        });
-        
-        sqlQuery += includeIngredientConditions.join(' OR ');
-        sqlQuery += ')';
-      }
-      
-      // Filter out ingredients to exclude
-      if (aiAnalysis.excludeIngredients && aiAnalysis.excludeIngredients.length) {
-        // Ensure expanded excludeIngredients are applied in the SQL query
-        const excludeConditions: string = aiAnalysis.excludeIngredients.map((ingredient: string, index: number) => `i.name ILIKE $${index + paramIndex}`).join(' OR ');
-        sqlQuery += ` AND r.id NOT IN (
-          SELECT ri.recipe_id 
-          FROM recipe_ingredients ri 
-          JOIN ingredients i ON ri.ingredient_id = i.id 
-          WHERE ${excludeConditions}
-        )`;
-        sqlParams.push(...(aiAnalysis.excludeIngredients as string[]).map((ingredient: string) => `%${ingredient}%`));
-        paramIndex += aiAnalysis.excludeIngredients.length;
-      }
-      
-      // Handle dietary preferences
-      if (aiAnalysis.dietaryPreferences && aiAnalysis.dietaryPreferences.length) {
-        // Check for common dietary restrictions
-        const dietaryTerms = aiAnalysis.dietaryPreferences.map((pref: string) => pref.toLowerCase());
-        
-        // Vegetarian/Vegan checks
-        if (dietaryTerms.some((term: string) => term.includes('vegan'))) {
-          sqlQuery += ` AND r.id NOT IN (
-            SELECT ri.recipe_id 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++} 
-              OR i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++}
-          )`;
-          sqlParams.push('%meat%', '%chicken%', '%beef%', '%pork%', '%fish%');
-        }
-        else if (dietaryTerms.some((term: string) => term.includes('vegetarian'))) {
-          sqlQuery += ` AND r.id NOT IN (
-            SELECT ri.recipe_id 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++}
-          )`;
-          sqlParams.push('%meat%', '%chicken%', '%beef%');
-        }
-        
-        // Gluten-free check
-        if (dietaryTerms.some((term: string) => term.includes('gluten') && term.includes('free'))) {
-          sqlQuery += ` AND r.id NOT IN (
-            SELECT ri.recipe_id 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++}
-          )`;
-          sqlParams.push('%wheat%', '%flour%', '%bread%');
-        }
-        
-        // Dairy-free check
-        if (dietaryTerms.some((term: string) => (term.includes('dairy') && term.includes('free')) || term.includes('lactose'))) {
-          sqlQuery += ` AND r.id NOT IN (
-            SELECT ri.recipe_id 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++} OR i.name ILIKE $${paramIndex++} 
-              OR i.name ILIKE $${paramIndex++}
-          )`;
-          sqlParams.push('%milk%', '%cheese%', '%cream%', '%butter%');
-        }
-      }
-      
-      // Additional full-text search for title and description matching
-      const fullTextTerms = [
-        ...(aiAnalysis.mainDish || []), 
-        ...(aiAnalysis.cookingMethods || []),
-        // Include single-word key ingredients as they might appear in titles
-        ...aiAnalysis.includeIngredients.filter((ing: string) => !ing.includes(' '))
-      ].filter(Boolean);
-      
-      if (fullTextTerms.length) {
-        const textConditions: string[] = [];
-        fullTextTerms.forEach((term: string) => {
-          textConditions.push(`r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex}`);
-          sqlParams.push(`%${term}%`);
-          paramIndex++;
-        });
-        
-        if (textConditions.length) {
-          sqlQuery += ` AND (${textConditions.join(' OR ')})`;
-        }
-      }
-      
-      // Add intelligent ordering based on how closely the recipe matches search criteria
-      sqlQuery += `
+          ${flattenedExclusions.map((_: string, idx: number): string => `AND r.id NOT IN (
+        SELECT ri.recipe_id 
+        FROM recipe_ingredients ri 
+        JOIN ingredients i ON ri.ingredient_id = i.id 
+        WHERE i.name ILIKE $${idx + 1}
+          )`).join(' ')}
         ORDER BY 
           CASE
-            WHEN r.title ILIKE $${paramIndex} THEN 1  
-            WHEN r.description ILIKE $${paramIndex} THEN 2
-            ELSE 3
+        WHEN r.title ILIKE $${flattenedExclusions.length + 1} THEN 1
+        WHEN r.description ILIKE $${flattenedExclusions.length + 1} THEN 2
+        ELSE 3
           END,
           r.id DESC LIMIT 20
       `;
-      sqlParams.push(`%${userQuery}%`);
-      
+
+      const sqlParams = flattenedExclusions.map((ingredient: string) => `%${ingredient}%`).concat(`%${userQuery}%`);
       console.log('Executing AI-enhanced SQL query:', sqlQuery);
       console.log('With parameters:', sqlParams);
-      
+
       const result = await this.pool.query(sqlQuery, sqlParams);
       console.log(`AI search returned ${result.rows.length} matching recipes`);
-      
-      // If AI search returned no results, try fallback search
+
       if (result.rows.length === 0) {
         console.log('AI search returned no results, trying fallback search');
-        const results = await this.fallbackSearch(userQuery);
-        this.saveToCache(normalizedQuery, results);
-        return results;
+        const fallbackResults = await this.fallbackSearch(userQuery);
+        this.saveToCache(normalizedQuery, fallbackResults);
+        return fallbackResults;
       }
-      
-      // Print final recommendations
-      console.log('=== FINAL RECOMMENDATIONS ===');
-      result.rows.slice(0, 6).forEach(recipe => {
-        console.log(`- ${recipe.title} (${recipe.description})`);
-      });
-      
-      // Tag the results with the AI's explanation of what it understood
-      const enhancedResults = result.rows.map(row => ({
-        ...row,
-        ai_analysis: aiAnalysis.explanation || 'AI-enhanced search results'
-      }));
-      
-      // Cache the results
-      this.saveToCache(normalizedQuery, enhancedResults, aiAnalysis);
-      
-      return enhancedResults;
+
+      this.saveToCache(normalizedQuery, result.rows);
+      return result.rows;
     } catch (error) {
       console.error('Error in recipe search:', error);
-      const results = await this.fallbackSearch(userQuery);
-      return results;
+      const fallbackResults = await this.fallbackSearch(userQuery);
+      this.saveToCache(userQuery, fallbackResults);
+      return fallbackResults;
     }
   }
-  
+
+  private async fallbackSearch(query: string): Promise<any[]> {
+    console.log('Fallback search executed for query:', query);
+
+    // Respect user preferences in fallback search
+    const aiAnalysis = this.createFallbackAnalysis(query);
+    const sqlQuery: string = `
+      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
+      FROM recipes r
+      WHERE 1=1
+      ${aiAnalysis.excludeIngredients.map((_: string, idx: number): string => `AND r.id NOT IN (
+        SELECT ri.recipe_id 
+        FROM recipe_ingredients ri 
+        JOIN ingredients i ON ri.ingredient_id = i.id 
+        WHERE i.name ILIKE $${idx + 1}
+      )`).join(' ')}
+      ORDER BY r.popularity DESC
+      LIMIT 20
+    `;
+
+    const sqlParams = aiAnalysis.excludeIngredients.map((ingredient: string) => `%${ingredient}%`);
+    console.log('Executing fallback SQL query:', sqlQuery);
+    console.log('With parameters:', sqlParams);
+
+    const result = await this.pool.query(sqlQuery, sqlParams);
+    return result.rows;
+  }
+
   /**
    * Determine if the glossary service found meaningful search terms
    */
@@ -772,304 +595,17 @@ Remember to output ONLY the JSON object.`;
   }
 
   /**
-   * Enhanced fallback search for protein-based dishes and combined queries
+   * Save data to the cache with a timestamp.
    */
-  private async fallbackSearch(query: string): Promise<any[]> {
-    const lowerQuery = query.toLowerCase();
-
-    // Detect combined protein queries like "meat and chicken dishes"
-    if (lowerQuery.includes('meat') && lowerQuery.includes('chicken')) {
-      console.log('Detected combined meat and chicken query, using specialized protein search');
-      const results = await this.specializedCombinedProteinSearch(['meat', 'chicken']);
-      this.saveToCache(query, results); // Cache the results
-      return results;
-    }
-
-    // Detect individual protein queries
-    if (lowerQuery.includes('meat')) {
-      console.log('Detected meat dish query, using specialized meat search');
-      const results = await this.specializedProteinSearch('meat');
-      this.saveToCache(query, results); // Cache the results
-      return results;
-    }
-
-    if (lowerQuery.includes('chicken')) {
-      console.log('Detected chicken dish query, using specialized chicken search');
-      const results = await this.specializedProteinSearch('chicken');
-      this.saveToCache(query, results); // Cache the results
-      return results;
-    }
-
-    // Handle empty queries by returning popular recipes
-    if (!query.trim()) {
-      console.log('Empty query detected, returning default recommendations');
-      const popularRecipes = await this.getPopularRecipes();
-      this.saveToCache(query, popularRecipes); // Cache the results
-      return popularRecipes;
-    }
-
-    // Default fallback behavior
-    console.log('Fallback search executed for query:', query);
-    const results = await this.defaultFallbackSearch(query); // Use default fallback method
-    this.saveToCache(query, results); // Cache the results
-    return results;
-  }
-
-  /**
-   * Default fallback search logic to handle queries without recursion
-   */
-  private async defaultFallbackSearch(query: string): Promise<any[]> {
-    console.log('Executing default fallback search for query:', query);
-
-    // Example logic: Return popular recipes as a fallback
-    const sqlQuery = `
-      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
-      FROM recipes r
-      ORDER BY r.popularity DESC
-      LIMIT 20
-    `;
-    const result = await this.pool.query(sqlQuery);
-    return result.rows;
-  }
-
-  /**
-   * Fetch popular recipes for default recommendations
-   */
-  private async getPopularRecipes(): Promise<any[]> {
-    const sqlQuery = `
-      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
-      FROM recipes r
-      ORDER BY r.popularity DESC
-      LIMIT 20
-    `;
-    const result = await this.pool.query(sqlQuery);
-    return result.rows;
-  }
-
-  /**
-   * Track consecutive failures to disable AI temporarily after too many failures
-   */
-  private incrementFailureCount(): void {
-    this.consecutiveFailures++;
-    if (this.consecutiveFailures >= this.MAX_FAILURES) {
-      console.log(`AI service has failed ${this.consecutiveFailures} times in a row. Disabling AI for now.`);
-      this.aiAvailable = false;
-    }
-  }
-  
-  /**
-   * Reset failure counter on successful AI response
-   */
-  private resetFailureCount(): void {
-    if (this.consecutiveFailures > 0) {
-      console.log('AI service is working again, resetting failure counter');
-      this.consecutiveFailures = 0;
-      this.aiAvailable = true;
-    }
-  }
-  
-  /**
-   * Save search results to the cache
-   */
-  private saveToCache(query: string, results: any[], aiAnalysis?: any): void {
+  private saveToCache(query: string, data: any[]): void {
     if (!this.CACHE_ENABLED) return;
-    
+
     this.cache.set(query, {
       timestamp: Date.now(),
-      data: results,
-      aiAnalysis
+      data: data
     });
-    
-    console.log(`Saved results for query "${query}" to cache`);
-  }
-  
-  /**
-   * Get search results from cache if available and not expired
-   */
-  private getFromCache(query: string): any[] | null {
-    if (!this.CACHE_ENABLED) return null;
-    
-    const cached = this.cache.get(query);
-    if (!cached) return null;
-    
-    // Check if cache entry is still valid
-    if (Date.now() - cached.timestamp > this.CACHE_TTL) {
-      console.log(`Cache entry for "${query}" has expired`);
-      this.cache.delete(query);
-      return null;
-    }
-    
-    return cached.data;
-  }
-  
-  /**
-   * Search recipes by a specific protein type
-   */
-  private async searchRecipesByProtein(protein: string): Promise<any[]> {
-    console.log(`Searching recipes for protein: ${protein}`);
-    const sqlQuery = `
-      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
-      FROM recipes r
-      JOIN recipe_ingredients ri ON r.id = ri.recipe_id
-      JOIN ingredients i ON ri.ingredient_id = i.id
-      WHERE i.name ILIKE $1
-      ORDER BY r.id DESC LIMIT 20
-    `;
-    const result = await this.pool.query(sqlQuery, [`%${protein}%`]);
-    return result.rows;
   }
 
-  /**
-   * Specialized search for protein-based dishes (meat, chicken, fish)
-   * This provides better results for queries like "meat dishes" or "chicken recipes"
-   */
-  private async specializedProteinSearch(proteinType: string): Promise<any[]> {
-    try {
-      console.log(`Running specialized search for ${proteinType} dishes`);
-      
-      // Different protein types need different search patterns
-      const proteinPatterns: Record<string, string[]> = {
-        'meat': ['%meat%', '%beef%', '%steak%', '%pork%', '%lamb%'],
-        'chicken': ['%chicken%', '%poultry%'],
-        'fish': ['%fish%', '%salmon%', '%tuna%', '%seafood%']
-      };
-      
-      // Get the search patterns for the requested protein
-      const patterns = proteinPatterns[proteinType] || [`%${proteinType}%`];
-      
-      // Build parameter placeholders
-      const placeholders = patterns.map((_, idx) => `$${idx + 1}`).join(' OR ');
-      
-      // Query recipes that contain the protein in ingredients AND title/description
-      const sqlQuery = `
-        SELECT DISTINCT r.id, r.title, r.description, r.cuisine, r.category_id
-        FROM recipes r
-        WHERE r.id IN (
-          -- Find recipes with the protein in ingredients
-          SELECT ri.recipe_id 
-          FROM recipe_ingredients ri 
-          JOIN ingredients i ON ri.ingredient_id = i.id 
-          WHERE ${patterns.map((_, idx) => `i.name ILIKE $${idx + 1}`).join(' OR ')}
-        )
-        -- Also require mention in title or description for better relevance
-        AND (${patterns.map((_, idx) => `r.title ILIKE $${idx + 1} OR r.description ILIKE $${idx + 1}`).join(' OR ')})
-        ORDER BY 
-          CASE
-            WHEN ${patterns.map((_, idx) => `r.title ILIKE $${idx + 1}`).join(' OR ')} THEN 1
-            ELSE 2
-          END,
-          r.id DESC
-        LIMIT 20
-      `;
-      
-      console.log(`Executing specialized ${proteinType} search with patterns:`, patterns);
-      const result = await this.pool.query(sqlQuery, patterns);
-      console.log(`Found ${result.rows.length} ${proteinType} dishes`);
-      
-      // If too few results, try a more relaxed search
-      if (result.rows.length < 5) {
-        console.log(`Few results found, trying relaxed ${proteinType} search`);
-        return this.relaxedProteinSearch(proteinType);
-      }
-      
-      return result.rows;
-    } catch (error) {
-      console.error(`Error in specialized ${proteinType} search:`, error);
-      // Fallback to a more basic search
-      return this.relaxedProteinSearch(proteinType);
-    }
-  }
-  
-  /**
-   * A more relaxed search for protein dishes when the specialized search returns too few results
-   */
-  private async relaxedProteinSearch(proteinType: string): Promise<any[]> {
-    try {
-      console.log(`Running relaxed search for ${proteinType} dishes`);
-      
-      // Only search in ingredients without requiring title/description match
-      const sqlQuery = `
-        SELECT DISTINCT r.id, r.title, r.description, r.cuisine, r.category_id
-        FROM recipes r
-        INNER JOIN recipe_ingredients ri ON r.id = ri.recipe_id
-        INNER JOIN ingredients i ON ri.ingredient_id = i.id
-        WHERE i.name ILIKE $1
-        ORDER BY r.id DESC
-        LIMIT 20
-      `;
-      
-      const result = await this.pool.query(sqlQuery, [`%${proteinType}%`]);
-      console.log(`Relaxed search found ${result.rows.length} ${proteinType} dishes`);
-      
-      return result.rows;
-    } catch (error) {
-      console.error(`Error in relaxed ${proteinType} search:`, error);
-      return [];
-    }
-  }
-  
-  /**
-   * Specialized search for multiple protein types (e.g., "meat and chicken dishes")
-   */
-  private async specializedCombinedProteinSearch(proteinTypes: string[]): Promise<any[]> {
-    try {
-      console.log(`Running specialized search for combined ${proteinTypes.join(' and ')} dishes`);
-      
-      // Create parameters for the SQL query
-      const params = proteinTypes.map(type => `%${type}%`);
-      
-      // Query that finds recipes matching ANY of the protein types in either:
-      // 1. Ingredients
-      // 2. Title and description
-      const sqlQuery = `
-        SELECT DISTINCT r.id, r.title, r.description, r.cuisine, r.category_id
-        FROM recipes r
-        WHERE 
-          -- Find recipes with any of the proteins in ingredients
-          r.id IN (
-            SELECT ri.recipe_id 
-            FROM recipe_ingredients ri 
-            JOIN ingredients i ON ri.ingredient_id = i.id 
-            WHERE ${proteinTypes.map((_, idx) => `i.name ILIKE $${idx + 1}`).join(' OR ')}
-          )
-          -- Also require mention of at least one protein in title or description for better relevance
-          AND (${proteinTypes.map((_, idx) => `r.title ILIKE $${idx + 1} OR r.description ILIKE $${idx + 1}`).join(' OR ')})
-        ORDER BY r.id DESC
-        LIMIT 20
-      `;
-      
-      console.log(`Executing combined protein search for: ${proteinTypes.join(', ')}`);
-      const result = await this.pool.query(sqlQuery, params);
-      console.log(`Found ${result.rows.length} combined protein dishes`);
-      
-      return result.rows;
-    } catch (error) {
-      console.error(`Error in combined protein search:`, error);
-      
-      // If the combined search fails, try searching for each protein type separately
-      // and combine the results
-      try {
-        let combinedResults: any[] = [];
-        
-        for (const proteinType of proteinTypes) {
-          const results = await this.relaxedProteinSearch(proteinType);
-          combinedResults = [...combinedResults, ...results];
-        }
-        
-        // Remove duplicates (based on recipe id)
-        const uniqueResults = Array.from(
-          new Map(combinedResults.map(recipe => [recipe.id, recipe])).values()
-        );
-        
-        // Limit to 20 results
-        return uniqueResults.slice(0, 20);
-      } catch (innerError) {
-        console.error('Error in fallback combined protein search:', innerError);
-        return [];
-      }
-    }
-  }
-  
   /**
    * Clean expired cache entries
    */
@@ -1105,6 +641,8 @@ Remember to output ONLY the JSON object.`;
         jsonText = jsonMatch[0];
       }
       
+      console.log('Attempting to parse JSON from AI response');
+      
       // Try to parse the JSON
       try {
         // Clean up the JSON text before parsing
@@ -1126,7 +664,36 @@ Remember to output ONLY the JSON object.`;
         
         // Process the original query to identify cuisine information that might have been missed
         this.extractMissedCuisineInformation(aiAnalysis, userQuery);
-
+        
+        // Look for patterns indicating excluded vegetables - expand to specific vegetable names
+        if (userQuery.toLowerCase().includes("don't want vegetables") || 
+            userQuery.toLowerCase().includes("no vegetables")) {
+          console.log('Expanding "no vegetables" to specific vegetable names');
+          
+          // Remove generic "vegetables" if it exists
+          aiAnalysis.excludeIngredients = aiAnalysis.excludeIngredients.filter(
+            (ingredient: string) => ingredient.toLowerCase() !== 'vegetables'
+          );
+          
+          // List of common vegetables
+          const commonVegetables = [
+            'carrot', 'broccoli', 'spinach', 'kale', 'lettuce', 'cabbage',
+            'cucumber', 'zucchini', 'eggplant', 'bell pepper', 'celery',
+            'asparagus', 'green beans', 'peas', 'corn', 'cauliflower',
+            'brussels sprouts', 'artichoke', 'beetroot', 'turnip', 'radish',
+            'onion', 'garlic', 'leek', 'shallot', 'tomato', 'potato',
+            'sweet potato', 'squash', 'pumpkin', 'okra', 'mushroom'
+          ];
+          
+          // Add all common vegetables to the excluded ingredients
+          commonVegetables.forEach(vegetable => {
+            if (!aiAnalysis.excludeIngredients.some((item: string) => 
+                item.toLowerCase() === vegetable.toLowerCase())) {
+              aiAnalysis.excludeIngredients.push(vegetable);
+            }
+          });
+        }
+        
         // Expand 'dairy products' into specific ingredients
         const dairyProducts = ['milk', 'cheese', 'butter', 'sour cream', 'yogurt', 'cream', 'ice cream', 'whey', 'casein', 'ghee'];
         if (aiAnalysis.excludeIngredients.includes('dairy products')) {
@@ -1145,6 +712,37 @@ Remember to output ONLY the JSON object.`;
           return recoveredJson;
         }
         
+        // Look for excluded vegetables pattern in the query - expand to specific vegetable names
+        if (userQuery.toLowerCase().includes("don't want vegetables") || 
+            userQuery.toLowerCase().includes("no vegetables")) {
+          console.log('Detected vegetables exclusion in query - creating fallback analysis with specific vegetables');
+          const fallbackAnalysis = this.createFallbackAnalysis(userQuery);
+          
+          // Remove generic "vegetables" if it exists
+          fallbackAnalysis.excludeIngredients = fallbackAnalysis.excludeIngredients.filter(
+            (ingredient: string) => ingredient.toLowerCase() !== 'vegetables'
+          );
+          
+          // List of common vegetables
+          const commonVegetables = [
+            'carrot', 'broccoli', 'spinach', 'kale', 'lettuce', 'cabbage',
+            'cucumber', 'zucchini', 'eggplant', 'bell pepper', 'celery',
+            'asparagus', 'green beans', 'peas', 'corn', 'cauliflower',
+            'brussels sprouts', 'artichoke', 'beetroot', 'turnip', 'radish',
+            'onion', 'garlic', 'leek', 'shallot', 'tomato', 'potato',
+            'sweet potato', 'squash', 'pumpkin', 'okra', 'mushroom'
+          ];
+          
+          // Add all common vegetables to the excluded ingredients
+          commonVegetables.forEach(vegetable => {
+            if (!fallbackAnalysis.excludeIngredients.includes(vegetable)) {
+              fallbackAnalysis.excludeIngredients.push(vegetable);
+            }
+          });
+          
+          return fallbackAnalysis;
+        }
+        
         console.log('Advanced parsing failed, using fallback analysis');
         return this.createFallbackAnalysis(userQuery);
       }
@@ -1153,7 +751,7 @@ Remember to output ONLY the JSON object.`;
       return this.createFallbackAnalysis(userQuery);
     }
   }
-  
+
   /**
    * Clean up and sanitize JSON string for parsing
    */

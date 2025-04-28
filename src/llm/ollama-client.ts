@@ -108,6 +108,7 @@ export class OllamaClient {
    */
   public async generateCompletion(prompt: string, options: any = {}): Promise<string> {
     const maxRetries = 2;
+    const retryDelay = 1000; // 1 second delay between retries
     let retries = 0;
 
     while (retries <= maxRetries) {
@@ -118,15 +119,7 @@ export class OllamaClient {
         if (!this.isModelPullInitiated) {
           const modelAvailable = await this.ensureModelAvailable();
           if (!modelAvailable) {
-            if (retries === 0) {
-              console.error(`Model ${this.model} is unavailable. Switching to default model: tinyllama.`);
-              this.setModel('tinyllama');
-              console.log(`Switched to default model: tinyllama. Retrying with the new model.`);
-              continue; // Retry with the default model
-            } else {
-              console.error(`Model ${this.model} is still unavailable after retry. Aborting further retries.`);
-              return `Error generating AI response: Model ${this.model} is unavailable. Fallback to default model failed.`;
-            }
+            throw new Error(`Model ${this.model} is unavailable.`);
           }
         }
 
@@ -135,7 +128,7 @@ export class OllamaClient {
 
         const response = await this.makeRequest('/api/generate', {
           model: this.model,
-          prompt: prompt,
+          prompt,
           stream: false,
           options: {
             temperature: 0.7,
@@ -158,12 +151,11 @@ export class OllamaClient {
         console.error(`Error generating completion (attempt ${retries + 1}/${maxRetries + 1}):`, error);
 
         if (retries < maxRetries) {
-          const delay = Math.pow(2, retries) * 1000;
-          console.log(`Retrying in ${delay}ms...`);
-          await new Promise((resolve) => setTimeout(resolve, delay));
+          console.log(`Retrying in ${retryDelay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, retryDelay));
           retries++;
         } else {
-          return `Error generating AI response: ${error instanceof Error ? error.message : String(error)}. Consider using a different model.`;
+          throw new Error(`Failed to generate completion after ${maxRetries + 1} attempts.`);
         }
       }
     }

@@ -200,4 +200,22 @@ export class GlossaryService {
       return [term]; // Return original term if error occurs
     }
   }
+
+  /**
+   * Resolve a category into specific items (e.g., "vegetables" -> ["carrot", "broccoli", "spinach"]).
+   */
+  public async resolveCategory(category: string): Promise<string[]> {
+    try {
+      const query = `
+        SELECT item_name 
+        FROM glossary 
+        WHERE category_name ILIKE $1
+      `;
+      const result = await this.pool.query(query, [category]);
+      return result.rows.map(row => row.item_name);
+    } catch (error) {
+      console.error(`Error resolving category "${category}":`, error);
+      return [];
+    }
+  }
 }

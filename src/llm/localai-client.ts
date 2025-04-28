@@ -186,11 +186,12 @@ export class LocalAIClient {
       console.log(`Sending prompt to LocalAI (model: ${modelToUse}): ${prompt.slice(0, 50)}...`);
       try {
         console.log('Request to /v1/models started at', new Date().toISOString());
-        await axios.get(`${this.apiUrl}/v1/models`);
-        console.log('Request to /v1/models completed in', 'a few', 'ms');
+        await axios.get(`${this.apiUrl}/v1/models`, { timeout: 5000 });
+        console.log('Request to /v1/models completed successfully');
       } catch (err) {
         console.log('Model checking failed, proceeding anyway');
       }
+      
       console.log('Starting LLM request at', new Date().toISOString());
       console.log('Request to /v1/completions started at', new Date().toISOString());
       const startTime = Date.now();
@@ -199,30 +200,49 @@ export class LocalAIClient {
         prompt: prompt,
         max_tokens: options.max_tokens || 800,
         temperature: options.temperature || 0.7,
-        top_p: options.top_p || 0.9
+        top_p: options.top_p || 0.9,
+        presence_penalty: options.presence_penalty || 0.1,
+        frequency_penalty: options.frequency_penalty || 0.2
       }, {
-        timeout: 30000
+        timeout: process.env.REQUEST_TIMEOUT ? parseInt(process.env.REQUEST_TIMEOUT) : 30000
       });
       const endTime = Date.now();
       console.log('Request to /v1/completions completed in', (endTime - startTime), 'ms');
+      
       if (response.data && response.data.choices && response.data.choices.length > 0) {
-        return response.data.choices[0].text.trim();
+        // Validate the response format
+        const rawText = response.data.choices[0].text || '';
+        if (rawText) {
+          console.log('Raw AI response:', rawText.substring(0, 50) + '...');
+          return rawText.trim();
+        } else {
+          throw new Error('Empty response text from model');
+        }
       } else {
         throw new Error('Invalid response format from LocalAI');
       }
     } catch (error: any) {
       const errorMsg = error.response?.data?.error?.message || error.response?.data || error.message;
       console.error('LocalAI API Error:', error.response?.status, '-', errorMsg);
+      
       if (error.code === 'ECONNREFUSED') {
-        return `Connection refused to LLM service. Please ensure docker-compose is running the llm_service.`;
+        return `Connection refused to LLM service. Please ensure docker-compose is running the ollama service.`;
       }
+      
+      // Detect timeout issues
+      if (error.code === 'ETIMEDOUT' || error.message?.includes('timeout')) {
+        return `The LLM request timed out. Try using a smaller model or increasing the request timeout.`;
+      }
+      
       // Detect memory error and return recognizable string
       if (typeof errorMsg === 'string' && errorMsg.includes('model requires more system memory')) {
         return `Error generating AI response: model requires more system memory. Please try a smaller model such as "tinyllama".`;
       }
+      
       if (error.response?.data) {
         return `Error generating AI response: Invalid response from LocalAI: ${error.response.status} ${JSON.stringify(error.response.data)}`;
       }
+      
       return `Error generating AI response: ${error.message || 'Unknown error'}`;
     }
   }
