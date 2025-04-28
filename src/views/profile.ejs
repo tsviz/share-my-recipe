@@ -105,7 +105,7 @@
         <!-- Profile Header -->
         <div class="profile-header">
             <% if (user.profile_image) { %>
-                <img src="<%= user.profile_image %>" alt="<%= user.username %>" class="profile-img">
+                <img src="/users/<%= user.id %>/profile-image" alt="<%= user.username %>" class="profile-img">
             <% } else { %>
                 <div class="profile-img d-flex align-items-center justify-content-center">
                     <i class="bi bi-person-fill" style="font-size: 3rem; color: #ccc;"></i>
@@ -126,6 +126,9 @@
             <% if (isOwnProfile) { %>
                 <a href="/profile/edit" class="btn btn-outline-main btn-sm">
                     <i class="bi bi-pencil"></i> Edit Profile
+                </a>
+                <a href="/favorites" class="btn btn-outline-danger btn-sm ms-2">
+                    <i class="bi bi-heart-fill"></i> View Favorite Recipes
                 </a>
             <% } %>
         </div>

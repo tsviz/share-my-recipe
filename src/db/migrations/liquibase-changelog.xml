@@ -1,0 +1,419 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="1" author="john_doe">
+        <createTable tableName="users">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="username" type="VARCHAR(255)">
+                <constraints unique="true" nullable="false"/>
+            </column>
+            <column name="email" type="VARCHAR(255)">
+                <constraints unique="true" nullable="false"/>
+            </column>
+            <column name="password" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="recipes">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="title" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="description" type="TEXT"/>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="cuisine" type="VARCHAR(100)"/>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="recipes" baseColumnNames="user_id"
+                                 referencedTableName="users" referencedColumnNames="id"
+                                 constraintName="fk_recipes_user_id"/>
+
+        <createTable tableName="ingredients">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <createTable tableName="recipe_ingredients">
+            <column name="recipe_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+            <column name="ingredient_id" type="VARCHAR(36)">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+
+        <addForeignKeyConstraint baseTableName="recipe_ingredients" baseColumnNames="recipe_id"
+                                 referencedTableName="recipes" referencedColumnNames="id"
+                                 constraintName="fk_recipe_ingredients_recipe_id"/>
+
+        <addForeignKeyConstraint baseTableName="recipe_ingredients" baseColumnNames="ingredient_id"
+                                 referencedTableName="ingredients" referencedColumnNames="id"
+                                 constraintName="fk_recipe_ingredients_ingredient_id"/>
+    </changeSet>
+
+    
+    <changeSet id="2" author="jane_smith">
+        <addColumn tableName="users">
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="updated_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="is_active" type="BOOLEAN" defaultValueBoolean="true">
+                <constraints nullable="false"/>
+            </column>
+            <column name="last_login" type="TIMESTAMP"/>
+            <column name="bio" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="3" author="system">
+        <createTable tableName="categories">
+            <column name="id" type="VARCHAR(36)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="name" type="VARCHAR(255)">
+                <constraints unique="true" nullable="false"/>
+            </column>
+        </createTable>
+
+        <addColumn tableName="recipes">
+            <column name="category_id" type="VARCHAR(36)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+
+        <addForeignKeyConstraint baseTableName="recipes" baseColumnNames="category_id"
+                                 referencedTableName="categories" referencedColumnNames="id"
+                                 constraintName="fk_recipes_category_id"/>
+    </changeSet>
+
+    <!-- Add profile_image column to users table before loading data -->
+    <changeSet id="4a" author="system">
+        <addColumn tableName="users">
+            <column name="profile_image" type="VARCHAR(255)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="4" author="system">
+        <loadData file="users_data_test.csv" tableName="users" separator="," encoding="UTF-8">
+            <column name="id" type="STRING"/>
+            <column name="username" type="STRING"/>
+            <column name="email" type="STRING"/>
+            <column name="password" type="STRING"/>
+            <column name="created_at" type="DATE"/>
+            <column name="last_login" type="DATE"/>
+            <column name="bio" type="STRING"/>
+            <column name="is_active" type="BOOLEAN"/>
+            <column name="updated_at" type="DATE"/>
+        </loadData>
+    </changeSet>
+
+    <changeSet id="12" author="app-developer">
+        <insert tableName="categories">
+            <column name="id" valueComputed="gen_random_uuid()"/>
+            <column name="name" value="Cuisine"/>
+        </insert>
+    </changeSet>
+
+    <changeSet id="5" author="system" runOnChange="true">
+        <loadData file="recipes_data.csv" tableName="recipes" separator=","/>
+    </changeSet>
+
+    <!-- Add quantity column to recipe_ingredients table -->
+    <changeSet id="6" author="system">
+        <addColumn tableName="recipe_ingredients">
+            <column name="quantity" type="VARCHAR(50)"/>
+        </addColumn>
+    </changeSet>
+
+    <changeSet id="7" author="system" runOnChange="true">
+        <loadData file="ingredients_data.csv" tableName="ingredients" separator=","/>
+        <loadData file="recipe_ingredients_data.csv" tableName="recipe_ingredients" separator=","/>
+    </changeSet>
+
+    <!-- Add instructions column to recipes table -->
+    <changeSet id="8" author="system">
+        <addColumn tableName="recipes">
+            <column name="instructions" type="TEXT"/>
+        </addColumn>
+    </changeSet>
+
+    <!-- Load instructions data from CSV -->
+    <changeSet id="9" author="system" runOnChange="true">
+        <loadUpdateData file="recipe_instructions_data.csv" tableName="recipes" separator=","
+            primaryKey="id"/>
+    </changeSet>
+
+    <!-- Authentication System - Add Date: April 20, 2025 -->
+    <changeSet id="10" author="app-developer">
+        <!-- Create sessions table for persistent logins -->
+        <createTable tableName="sessions">
+            <column name="id" type="VARCHAR(255)">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_session_user" references="users(id)"/>
+            </column>
+            <column name="data" type="TEXT"/>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+            <column name="expires" type="TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        
+        <!-- Create favorites table for saving favorite recipes -->
+        <createTable tableName="favorites">
+            <column name="id" type="VARCHAR(36)" defaultValueComputed="gen_random_uuid()">
+                <constraints primaryKey="true" nullable="false"/>
+            </column>
+            <column name="user_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_favorite_user" references="users(id)"/>
+            </column>
+            <column name="recipe_id" type="VARCHAR(36)">
+                <constraints nullable="false" foreignKeyName="fk_favorite_recipe" references="recipes(id)"/>
+            </column>
+            <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
+                <constraints nullable="false"/>
+            </column>
+        </createTable>
+        <addUniqueConstraint tableName="favorites" columnNames="user_id,recipe_id" constraintName="unique_user_recipe_favorite"/>
+    </changeSet>
+
+    <changeSet id="11" author="app-developer">
+        <insert tableName="categories">
+            <column name="id" valueComputed="gen_random_uuid()"/>
+            <column name="name" value="Breakfast"/>
+        </insert>
+        <insert tableName="categories">
+            <column name="id" valueComputed="gen_random_uuid()"/>
+            <column name="name" value="Lunch"/>
+        </insert>
+        <insert tableName="categories">
+            <column name="id" valueComputed="gen_random_uuid()"/>
+            <column name="name" value="Dinner"/>
+        </insert>
+        <insert tableName="categories">
+            <column name="id" valueComputed="gen_random_uuid()"/>
+            <column name="name" value="Dessert"/>
+        </insert>
+        <insert tableName="categories">
+            <column name="id" valueComputed="gen_random_uuid()"/>
+            <column name="name" value="Snack"/>
+        </insert>
+    </changeSet>
+
+    <!-- Change profile_image column to BYTEA for binary image storage -->
+    <changeSet id="13" author="tsvi">
+        <modifyDataType tableName="users" columnName="profile_image" newDataType="BYTEA"/>
+    </changeSet>
+
+    <!-- Add Advanced Recipe Search Capabilities - Date: April 27, 2025 -->
+    <changeSet id="14" author="tsvi">
+        <comment>Adding intelligent recipe search capabilities using PostgreSQL full-text search</comment>
+        
+        <!-- 1. Enable the pg_trgm extension for fuzzy text matching -->
+        <sql>CREATE EXTENSION IF NOT EXISTS pg_trgm;</sql>
+        
+        <!-- 2. Add tsvector column to recipes table for full-text search -->
+        <addColumn tableName="recipes">
+            <column name="search_vector" type="tsvector"/>
+            <column name="embedding" type="float4[]"/>
+        </addColumn>
+        
+        <!-- 3. Create function to update the search_vector -->
+        <createProcedure>
+            CREATE OR REPLACE FUNCTION update_recipe_search_vector()
+            RETURNS trigger AS $$
+            BEGIN
+                NEW.search_vector = 
+                    setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
+                    setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'B') ||
+                    setweight(to_tsvector('english', COALESCE(NEW.cuisine, '')), 'C');
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+        </createProcedure>
+        
+        <!-- 4. Create a trigger to update search_vector on insert/update -->
+        <sql>
+            DROP TRIGGER IF EXISTS update_recipe_search_vector_trigger ON recipes;
+            CREATE TRIGGER update_recipe_search_vector_trigger
+            BEFORE INSERT OR UPDATE ON recipes
+            FOR EACH ROW EXECUTE FUNCTION update_recipe_search_vector();
+        </sql>
+        
+        <!-- 5. Update existing recipes with search_vector -->
+        <sql>
+            UPDATE recipes SET search_vector = 
+                setweight(to_tsvector('english', COALESCE(title, '')), 'A') || 
+                setweight(to_tsvector('english', COALESCE(description, '')), 'B') || 
+                setweight(to_tsvector('english', COALESCE(cuisine, '')), 'C');
+        </sql>
+        
+        <!-- 6. Create GIN index for faster full-text search -->
+        <sql>
+            CREATE INDEX IF NOT EXISTS recipes_search_vector_idx ON recipes USING GIN(search_vector);
+        </sql>
+        
+        <!-- 7. Create a view for recipe keyword indexing -->
+        <createView viewName="recipe_keywords">
+            SELECT r.id, r.title, r.description, r.cuisine, r.category_id, 
+                  string_agg(i.name, ' ') as ingredients,
+                  r.search_vector
+            FROM recipes r
+            LEFT JOIN recipe_ingredients ri ON r.id = ri.recipe_id 
+            LEFT JOIN ingredients i ON ri.ingredient_id = i.id
+            GROUP BY r.id, r.title, r.description, r.cuisine, r.category_id, r.search_vector
+        </createView>
+        
+        <!-- 8. Create function for intelligent recipe search -->
+        <createProcedure>
+            CREATE OR REPLACE FUNCTION search_recipes(search_query text) 
+            RETURNS TABLE(
+                id text, 
+                title text, 
+                description text,
+                cuisine text,
+                category_id text,
+                rank float4
+            ) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT 
+                    r.id, 
+                    r.title, 
+                    r.description,
+                    r.cuisine,
+                    r.category_id,
+                    ts_rank(r.search_vector, to_tsquery('english', replace(trim(search_query), ' ', ' &amp; '))) AS rank
+                FROM 
+                    recipes r
+                WHERE 
+                    r.search_vector @@ to_tsquery('english', replace(trim(search_query), ' ', ' &amp; '))
+                ORDER BY 
+                    rank DESC;
+            END;
+            $$ LANGUAGE plpgsql;
+        </createProcedure>
+        
+        <!-- 9. Create function to find similar recipes based on ingredients -->
+        <createProcedure>
+            CREATE OR REPLACE FUNCTION find_similar_recipes(recipe_id text) 
+            RETURNS TABLE(
+                id text, 
+                title text,
+                similarity float4
+            ) AS $$
+            BEGIN
+                RETURN QUERY
+                SELECT 
+                    r2.id,
+                    r2.title,
+                    similarity(
+                        (SELECT string_agg(i.name, ' ') FROM recipe_ingredients ri1
+                         JOIN ingredients i ON ri1.ingredient_id = i.id
+                         WHERE ri1.recipe_id = recipe_id),
+                        (SELECT string_agg(i.name, ' ') FROM recipe_ingredients ri2
+                         JOIN ingredients i ON ri2.ingredient_id = i.id
+                         WHERE ri2.recipe_id = r2.id)
+                    ) AS similarity_score
+                FROM 
+                    recipes r2
+                WHERE 
+                    r2.id != recipe_id
+                ORDER BY 
+                    similarity_score DESC
+                LIMIT 10;
+            END;
+            $$ LANGUAGE plpgsql;
+        </createProcedure>
+        
+        <!-- 10. Create function for preference-based recipe search with correct types -->
+        <sql>DROP FUNCTION IF EXISTS preference_search_recipes(text, text);</sql>
+        <createProcedure>
+            CREATE OR REPLACE FUNCTION preference_search_recipes(
+                preferences text,
+                exclude_ingredients text DEFAULT NULL
+            ) 
+            RETURNS TABLE(
+                id VARCHAR(36), 
+                title VARCHAR(255), 
+                description TEXT,
+                cuisine VARCHAR(100),
+                category_id VARCHAR(36),
+                rank float4
+            ) AS $$
+            DECLARE
+                exclude_terms text[];
+                exclude_condition text := '';
+            BEGIN
+                -- Parse excluded ingredients
+                IF exclude_ingredients IS NOT NULL AND exclude_ingredients != '' THEN
+                    exclude_terms := string_to_array(lower(exclude_ingredients), ',');
+                    exclude_condition := ' AND NOT (';
+                    FOR i IN 1..array_length(exclude_terms, 1) LOOP
+                        IF i > 1 THEN
+                            exclude_condition := exclude_condition || ' OR ';
+                        END IF;
+                        exclude_condition := exclude_condition || 'r.title ILIKE ''%' || trim(exclude_terms[i]) || '%'' OR r.description ILIKE ''%' || trim(exclude_terms[i]) || '%''';
+                    END LOOP;
+                    exclude_condition := exclude_condition || ')';
+                END IF;
+
+                RETURN QUERY EXECUTE
+                'SELECT 
+                    r.id, 
+                    r.title, 
+                    r.description,
+                    r.cuisine,
+                    r.category_id,
+                    ts_rank(r.search_vector, plainto_tsquery(''english'', $1)) AS rank
+                FROM 
+                    recipes r
+                WHERE 
+                    r.search_vector @@ plainto_tsquery(''english'', $1)' 
+                    || exclude_condition ||
+                ' ORDER BY 
+                    rank DESC'
+                USING preferences;
+            END;
+            $$ LANGUAGE plpgsql;
+        </createProcedure>
+        
+        <rollback>
+            <!-- Rollback steps in case we need to undo these changes -->
+            DROP FUNCTION IF EXISTS preference_search_recipes(text, text);
+            DROP FUNCTION IF EXISTS find_similar_recipes(text);
+            DROP FUNCTION IF EXISTS search_recipes(text);
+            DROP VIEW IF EXISTS recipe_keywords;
+            DROP INDEX IF EXISTS recipes_search_vector_idx;
+            DROP TRIGGER IF EXISTS update_recipe_search_vector_trigger ON recipes;
+            DROP FUNCTION IF EXISTS update_recipe_search_vector();
+            ALTER TABLE recipes DROP COLUMN IF EXISTS search_vector;
+            ALTER TABLE recipes DROP COLUMN IF EXISTS embedding;
+        </rollback>
+    </changeSet>
+
+    <changeSet id="15" author="tsvi" runOnChange="true">
+        <sqlFile path="create-glossary-tables.sql" relativeToChangelogFile="true" encoding="UTF-8"/>
+    </changeSet>
+
+</databaseChangeLog>

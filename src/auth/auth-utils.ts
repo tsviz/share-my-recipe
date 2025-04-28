@@ -117,9 +117,14 @@ export async function changeUserPassword(
 
 // Middleware to ensure user is authenticated
 export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
+  console.log('isAuthenticated middleware:', {
+    isAuthenticated: req.isAuthenticated(),
+    user: req.user
+  });
   if (req.isAuthenticated()) {
     return next();
   }
+  req.flash('error', 'You must be logged in to perform this action.');
   res.redirect('/login');
 }
 

@@ -4,6 +4,7 @@
   "main": "index.js",
   "scripts": {
     "start": "ts-node src/index.ts",
+    "dev": "ts-node src/index.ts",
     "test": "jest"
   },
   "keywords": [],
@@ -14,9 +15,13 @@
     "bcrypt": "^5.1.1",
     "body-parser": "^2.2.0",
     "connect-flash": "^0.1.1",
+    "csv-parse": "^5.6.0",
+    "csv-stringify": "^6.5.2",
     "ejs": "^3.1.10",
     "express": "^5.1.0",
     "express-session": "^1.18.1",
+    "multer": "^1.4.5-lts.2",
+    "node-fetch": "^3.3.2",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
     "pg": "^8.14.1"
@@ -27,6 +32,7 @@
     "@types/express": "^5.0.1",
     "@types/express-session": "^1.18.1",
     "@types/jest": "^29.5.14",
+    "@types/multer": "^1.4.12",
     "@types/node": "^22.14.1",
     "@types/passport": "^1.0.17",
     "@types/passport-local": "^1.0.38",

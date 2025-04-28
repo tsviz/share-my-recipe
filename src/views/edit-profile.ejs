@@ -83,17 +83,18 @@
                     <% if (!user) { %>
                         <div class="alert alert-danger">User data is missing. Please try again later.</div>
                     <% } else { %>
-                        <form action="/profile/edit" method="POST">
-                            <!-- Profile Image (not functional without file upload) -->
+                        <form action="/profile/edit" method="POST" enctype="multipart/form-data">
+                            <!-- Profile Image Upload -->
                             <div class="mb-4 text-center">
                                 <div class="profile-image-preview">
                                     <% if (user.profile_image) { %>
-                                        <img src="<%= user.profile_image %>" alt="<%= user.username %>" id="profileImagePreview">
+                                        <img src="/users/<%= user.id %>/profile-image" alt="<%= user.username %>" id="profileImagePreview">
                                     <% } else { %>
                                         <i class="bi bi-person-fill" style="font-size: 3rem; color: #adb5bd;"></i>
                                     <% } %>
                                 </div>
-                                <p class="text-muted mb-2">Profile image (coming soon)</p>
+                                <input class="form-control mt-2" type="file" id="profile_image" name="profile_image" accept="image/*">
+                                <div class="form-text">Upload a profile image (JPG, PNG, GIF).</div>
                             </div>
                             
                             <!-- Username -->

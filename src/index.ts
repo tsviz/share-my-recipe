@@ -1,4 +1,4 @@
-import express from 'express';
+import express, { Request, Response } from 'express';
 import bodyParser from 'body-parser';
 import { Pool } from 'pg';
 import path from 'path';
@@ -6,6 +6,11 @@ import passport from 'passport';
 import session from 'express-session';
 import flash from 'connect-flash';
 import bcrypt from 'bcrypt';
+import multer from 'multer';
+import fetch from 'node-fetch';
+
+// Import our LLM search service
+import { RecipeSearchService } from './llm/recipe-search-service';
 
 // Import authentication modules
 import configurePassport from './auth/passport-config';
@@ -16,10 +21,10 @@ const port = 3000;
 
 // PostgreSQL connection pool
 const pool = new Pool({
-  user: 'postgres',
-  host: 'localhost',
-  database: 'mydb',
-  password: 'mypassword',
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'postgres', // Use environment variable with fallback
+  database: process.env.DB_NAME || 'postgres',
+  password: process.env.DB_PASSWORD || 'yourpassword',
   port: 5432,
 });
 
@@ -32,7 +37,11 @@ app.use(session({
   secret: 'recipe_sharing_secret_key',
   resave: false,
   saveUninitialized: false,
-  cookie: { maxAge: 1000 * 60 * 60 * 24 } // 1 day
+  cookie: {
+    maxAge: 1000 * 60 * 60 * 24, // 1 day
+    sameSite: 'lax', // allow cookies for localhost
+    secure: false    // do not require HTTPS for localhost
+  }
 }));
 
 // Initialize Passport and restore authentication state from session
@@ -47,15 +56,17 @@ configurePassport(passport, pool);
 
 // Make flash messages and user available to all templates
 app.use((req, res, next) => {
-  if (!req.user) {
-    console.log('Debug: req.user is undefined, waiting for deserialization');
-    res.locals.isAuthenticated = false;
-    res.locals.messages = req.flash() || {};
+  // Wait for passport to finish deserialization before setting res.locals
+  if (typeof req.isAuthenticated !== 'function') {
     return next();
   }
-  console.log('Debug: Setting res.locals.user after deserialization =', req.user);
-  res.locals.user = req.user;
-  res.locals.isAuthenticated = req.isAuthenticated();
+  if (req.isAuthenticated()) {
+    res.locals.user = req.user;
+    res.locals.isAuthenticated = true;
+  } else {
+    res.locals.user = null;
+    res.locals.isAuthenticated = false;
+  }
   res.locals.messages = req.flash() || {};
   next();
 });
@@ -181,38 +192,39 @@ app.get('/profile/edit', isAuthenticated, (req, res) => {
   res.render('edit-profile', { user: req.user });
 });
 
-app.post('/profile/edit', isAuthenticated, async (req, res) => {
+// Set up multer for profile image uploads
+const upload = multer(); // Use memory storage for buffer
+const uploadDir = path.join(__dirname, '../uploads');
+app.use('/uploads', express.static(uploadDir));
+
+app.post('/profile/edit', isAuthenticated, upload.single('profile_image'), async (req, res) => {
   try {
     const user = req.user as any;
     const { username, bio, currentPassword, newPassword, confirmPassword } = req.body;
-    
+    if (req.file) {
+      await pool.query('UPDATE users SET profile_image = $1 WHERE id = $2', [req.file.buffer, user.id]);
+    }
     // Update profile info
     const profileUpdated = await updateUserProfile(pool, user.id, username, bio);
-    
     if (!profileUpdated) {
       req.flash('error', 'Failed to update profile');
       return res.redirect('/profile/edit');
     }
-    
     // Change password if provided
     if (currentPassword && newPassword) {
       if (newPassword !== confirmPassword) {
         req.flash('error', 'New passwords do not match');
         return res.redirect('/profile/edit');
       }
-      
       const passwordResult = await changeUserPassword(pool, user.id, currentPassword, newPassword);
-      
       if (!passwordResult.success) {
         req.flash('error', passwordResult.message);
         return res.redirect('/profile/edit');
       }
-      
       req.flash('success', 'Profile and password updated successfully');
     } else {
       req.flash('success', 'Profile updated successfully');
     }
-    
     res.redirect('/profile');
   } catch (error) {
     console.error(error);
@@ -270,6 +282,77 @@ app.get('/profile/:userId', async (req, res) => {
   }
 });
 
+// New route to display a user's profile, their recipes, and their favorite recipes
+app.get('/users/:id', async (req, res) => {
+  const userId = req.params.id;
+  try {
+    // Fetch user info
+    const userResult = await pool.query('SELECT id, username, bio, profile_image, created_at FROM users WHERE id = $1', [userId]);
+    if (userResult.rows.length === 0) {
+      req.flash('error', 'User not found');
+      return res.redirect('/');
+    }
+    const user = userResult.rows[0];
+
+    // Fetch user's own recipes
+    const recipesResult = await pool.query(`
+      SELECT r.*, c.name as category_name
+      FROM recipes r
+      LEFT JOIN categories c ON r.category_id = c.id
+      WHERE r.user_id = $1
+      ORDER BY r.id DESC
+    `, [userId]);
+    const recipes = recipesResult.rows;
+
+    // Fetch user's favorite recipes
+    const favResult = await pool.query(`
+      SELECT r.*, c.name as category_name, u.username
+      FROM favorites f
+      JOIN recipes r ON f.recipe_id = r.id
+      LEFT JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE f.user_id = $1
+      ORDER BY f.created_at DESC
+    `, [userId]);
+    const favoriteRecipes = favResult.rows;
+
+    res.render('user-profile', {
+      title: `${user.username}'s Profile`,
+      user,
+      recipes,
+      favoriteRecipes
+    });
+  } catch (error) {
+    console.error(error);
+    req.flash('error', 'Failed to load user profile');
+    res.redirect('/');
+  }
+});
+
+// Route to serve user profile image as binary
+app.get('/users/:id/profile-image', async (req, res) => {
+  try {
+    const userId = req.params.id;
+    const result = await pool.query('SELECT profile_image FROM users WHERE id = $1', [userId]);
+    if (result.rows.length === 0 || !result.rows[0].profile_image) {
+      // Send a default image if not found
+      return res.sendFile(path.join(__dirname, '../uploads/default-profile.png'));
+    }
+    const imgBuffer = result.rows[0].profile_image;
+    // Try to detect image type (default to png)
+    let contentType = 'image/png';
+    if (imgBuffer && imgBuffer.length > 3) {
+      if (imgBuffer[0] === 0xff && imgBuffer[1] === 0xd8) contentType = 'image/jpeg';
+      else if (imgBuffer[0] === 0x89 && imgBuffer[1] === 0x50) contentType = 'image/png';
+      else if (imgBuffer[0] === 0x47 && imgBuffer[1] === 0x49) contentType = 'image/gif';
+    }
+    res.set('Content-Type', contentType);
+    res.send(imgBuffer);
+  } catch (error) {
+    res.status(404).end();
+  }
+});
+
 // Route to register a new user (deprecated, use auth flow instead)
 app.post('/users/register', async (req, res) => {
   const { username, email, password } = req.body;
@@ -289,135 +372,568 @@ app.post('/users/register', async (req, res) => {
   }
 });
 
-// Route to add a new recipe
-app.post('/recipes', async (req, res) => {
-  const { title, description, userId, instructions } = req.body;
+// Route to add a recipe
+app.post('/recipes', isAuthenticated, async (req, res) => {
+  const { title, description, category_id, instructions, cuisine } = req.body;
+  const userId = (req.user as any).id;
   try {
-    const result = await pool.query(
-      'INSERT INTO recipes (id, title, description, user_id, instructions) VALUES (gen_random_uuid(), $1, $2, $3, $4) RETURNING id',
-      [title, description, userId, instructions]
+    await pool.query(
+      'INSERT INTO recipes (id, title, description, user_id, category_id, instructions, cuisine) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)',
+      [title, description, userId, category_id || null, instructions, cuisine || null]
     );
-    res.status(201).json({ recipeId: result.rows[0].id });
+    req.flash('success', 'Recipe created successfully!');
+    return res.redirect('/dashboard');
   } catch (error) {
     console.error(error);
-    res.status(500).json({ error: 'Failed to add recipe' });
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    req.flash('error', 'Failed to add recipe: ' + errorMessage);
+    return res.redirect('/recipes/new');
   }
 });
 
+// Route to add a recipe to favorites
+app.post('/recipes/:id/favorite', isAuthenticated, async (req, res) => {
+  const userId = (req.user as any).id;
+  const recipeId = req.params.id;
+  const { q, category, cuisine, page } = req.body;
+  try {
+    await pool.query(
+      'INSERT INTO favorites (user_id, recipe_id) VALUES ($1, $2) ON CONFLICT DO NOTHING',
+      [userId, recipeId]
+    );
+    // Redirect back to the referring page
+    const referer = req.get('Referer');
+    if (referer) {
+      return res.redirect(referer);
+    }
+    let redirectUrl = '/recipes';
+    const params = [];
+    if (q) params.push(`q=${encodeURIComponent(q)}`);
+    if (category) params.push(`category=${encodeURIComponent(category)}`);
+    if (cuisine) params.push(`cuisine=${encodeURIComponent(cuisine)}`);
+    if (page) params.push(`page=${encodeURIComponent(page)}`);
+    if (params.length > 0) redirectUrl += '?' + params.join('&');
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error(error);
+    req.flash('error', 'Failed to favorite recipe');
+    res.redirect('/recipes');
+  }
+});
+
+// Route to unfavorite a recipe 
+app.post('/recipes/:id/unfavorite', isAuthenticated, async (req, res) => {
+  const userId = (req.user as any).id;
+  const recipeId = req.params.id;
+  const { q, category, cuisine, page } = req.body;
+  const requestPath = req.path;
+  
+  try {
+    // Delete the favorite record
+    const result = await pool.query(
+      'DELETE FROM favorites WHERE user_id = $1 AND recipe_id = $2 RETURNING id',
+      [userId, recipeId]
+    );
+    
+    console.log(`Unfavorited recipe ${recipeId} for user ${userId}, removed ${result.rowCount} records`);
+
+    // Check if this request is coming from the favorites page
+    const referer = req.get('Referer') || '';
+    const isFromFavoritesPage = referer.includes('/favorites');
+    
+    if (isFromFavoritesPage) {
+      // If unfavorited from the favorites page, redirect back to favorites
+      return res.redirect('/favorites');
+    }
+    
+    // Otherwise, redirect to the same page with the search parameters preserved
+    let redirectUrl = '/recipes';
+    const params = [];
+    if (q) params.push(`q=${encodeURIComponent(q)}`);
+    if (category) params.push(`category=${encodeURIComponent(category)}`);
+    if (cuisine) params.push(`cuisine=${encodeURIComponent(cuisine)}`);
+    if (page) params.push(`page=${encodeURIComponent(page)}`);
+    if (params.length > 0) redirectUrl += '?' + params.join('&');
+    
+    // If there's a referer, use it to maintain the current page
+    if (referer && !isFromFavoritesPage) {
+      return res.redirect(referer);
+    }
+    
+    res.redirect(redirectUrl);
+  } catch (error) {
+    console.error("Error unfavoriting recipe:", error);
+    req.flash('error', 'Failed to unfavorite recipe');
+    res.redirect('/recipes');
+  }
+});
+
+// IMPORTANT: More specific routes come before general routes
+// Route to render the "Search Recipes" page
+app.get('/recipes/search', (req, res) => {
+  res.render('search', { 
+    title: 'Personalized Recipe Recommendations',
+    ai_enabled: true
+  });
+});
+
+// Create an instance of our AI-powered search service
+const recipeSearchService = new RecipeSearchService(pool);
+
+// Update the search endpoint to use AI-powered search
+app.post('/recipes/search', async (req, res) => {
+  const about = req.body.about || '';
+  let recommendations = [];
+  let aiExplanation = ''; // Will hold the AI's explanation of what it understood
+  
+  try {
+    console.log("=== USER PREFERENCE DETECTION ===");
+    console.log("User input:", about);
+    
+    // Use the AI-powered search service
+    const searchResults = await recipeSearchService.searchRecipes(about);
+    
+    // Extract AI explanation if available
+    if (searchResults.length > 0 && searchResults[0].ai_analysis) {
+      aiExplanation = searchResults[0].ai_analysis;
+      // Remove the ai_analysis field from results to avoid confusion in the view
+      searchResults.forEach(recipe => delete recipe.ai_analysis);
+    }
+    
+    console.log(`AI search returned ${searchResults.length} matching recipes`);
+    
+    // Limit to 6 recommendations
+    recommendations = searchResults.slice(0, 6);
+    
+    if (recommendations.length === 0) {
+      req.flash('info', 'No recipes match your preferences. Try adjusting your requirements.');
+    }
+  } catch (e) {
+    console.error("Error in AI recipe recommendations:", e);
+    recommendations = [];
+  }
+  
+  // Final check: log all recommendations
+  console.log("=== FINAL RECOMMENDATIONS ===");
+  recommendations.forEach(recipe => {
+    console.log(`- ${recipe.title} (${recipe.description || 'No description'})`);
+  });
+  
+  res.render('search', {
+    about,
+    recommendations,
+    aiExplanation,
+    title: 'Personalized Recipe Recommendations',
+    ai_enabled: true
+  });
+});
+
+// Route to render the "Create Recipe" page
+app.get('/recipes/new', isAuthenticated, async (req, res) => {
+  try {
+    // Fetch all unique cuisines from recipes
+    const cuisinesResult = await pool.query("SELECT DISTINCT cuisine FROM recipes WHERE cuisine IS NOT NULL AND cuisine <> '' ORDER BY cuisine ASC");
+    const cuisines = cuisinesResult.rows.map(row => row.cuisine);
+    
+    console.log("Fetched cuisines for new recipe:", cuisines);
+    
+    res.render('new-recipe', { 
+      title: 'Create Recipe', 
+      cuisines, 
+      user: req.user 
+    });
+  } catch (error) {
+    console.error("Error loading cuisines:", error);
+    req.flash('error', 'Failed to load cuisines');
+    res.redirect('/dashboard');
+  }
+});
+
+// Route to edit a recipe 
+app.get('/recipes/edit/:id', isAuthenticated, async (req, res) => {
+  const recipeId = req.params.id;
+  const userId = (req.user as any).id;
+  try {
+    const recipeResult = await pool.query('SELECT * FROM recipes WHERE id = $1 AND user_id = $2', [recipeId, userId]);
+    if (recipeResult.rows.length === 0) {
+      req.flash('error', 'Recipe not found or you do not have permission to edit it');
+      return res.redirect('/dashboard');
+    }
+    const recipe = recipeResult.rows[0];
+    // Fetch all unique cuisines from recipes
+    const cuisinesResult = await pool.query("SELECT DISTINCT cuisine FROM recipes WHERE cuisine IS NOT NULL AND cuisine <> '' ORDER BY cuisine ASC");
+    const cuisines = cuisinesResult.rows.map(row => row.cuisine);
+    res.render('edit-recipe', { title: 'Edit Recipe', recipe, cuisines, user: req.user });
+  } catch (error) {
+    console.error(error);
+    req.flash('error', 'Failed to load recipe for editing');
+    res.redirect('/dashboard');
+  }
+});
+
+app.post('/recipes/edit/:id', isAuthenticated, async (req, res) => {
+  const recipeId = req.params.id;
+  const userId = (req.user as any).id;
+  const { title, description, category_id, instructions, cuisine } = req.body;
+  try {
+    await pool.query(
+      'UPDATE recipes SET title = $1, description = $2, category_id = $3, instructions = $4, cuisine = $5 WHERE id = $6 AND user_id = $7',
+      [title, description, category_id || null, instructions, cuisine || null, recipeId, userId]
+    );
+    req.flash('success', 'Recipe updated successfully!');
+    res.redirect('/dashboard');
+  } catch (error) {
+    console.error(error);
+    req.flash('error', 'Failed to update recipe');
+    res.redirect(`/recipes/edit/${recipeId}`);
+  }
+});
+
+// Route to delete a recipe
+app.post('/recipes/delete/:id', isAuthenticated, async (req, res) => {
+  const recipeId = req.params.id;
+  const userId = (req.user as any).id;
+  
+  try {
+    console.log(`Attempting to delete recipe ${recipeId} by user ${userId}`);
+    
+    // First verify that the recipe belongs to the current user
+    const recipeResult = await pool.query(
+      'SELECT user_id, title FROM recipes WHERE id = $1',
+      [recipeId]
+    );
+    
+    console.log(`Recipe lookup result: ${JSON.stringify(recipeResult.rows)}`);
+    
+    if (recipeResult.rows.length === 0) {
+      console.log(`Recipe ${recipeId} not found`);
+      req.flash('error', 'Recipe not found');
+      return res.redirect('/dashboard');
+    }
+    
+    if (recipeResult.rows[0].user_id !== userId) {
+      console.log(`User ${userId} attempting to delete recipe that belongs to user ${recipeResult.rows[0].user_id}`);
+      req.flash('error', 'You do not have permission to delete this recipe');
+      return res.redirect('/dashboard');
+    }
+    
+    console.log(`Deleting recipe ${recipeId}: ${recipeResult.rows[0].title}`);
+    
+    // Start a transaction to ensure all operations are completed or none
+    await pool.query('BEGIN');
+    
+    try {
+      // Delete associated records in recipe_ingredients first (foreign key constraint)
+      const ingredientsResult = await pool.query(
+        'DELETE FROM recipe_ingredients WHERE recipe_id = $1',
+        [recipeId]
+      );
+      console.log(`Deleted ${ingredientsResult.rowCount} ingredient records`);
+      
+      // Delete any favorite records for this recipe
+      const favoritesResult = await pool.query(
+        'DELETE FROM favorites WHERE recipe_id = $1',
+        [recipeId]
+      );
+      console.log(`Deleted ${favoritesResult.rowCount} favorite records`);
+      
+      // Now delete the recipe itself
+      const deleteResult = await pool.query(
+        'DELETE FROM recipes WHERE id = $1 AND user_id = $2 RETURNING id',
+        [recipeId, userId]
+      );
+      
+      console.log(`Recipe deletion result: ${JSON.stringify(deleteResult.rows)}`);
+      
+      if (deleteResult.rows.length === 0) {
+        throw new Error('Recipe could not be deleted');
+      }
+      
+      // Commit transaction
+      await pool.query('COMMIT');
+      
+      console.log(`Successfully deleted recipe ${recipeId}`);
+      req.flash('success', 'Recipe deleted successfully');
+      res.redirect('/dashboard');
+    } catch (error) {
+      // Rollback transaction on error
+      await pool.query('ROLLBACK');
+      throw error;
+    }
+  } catch (error: any) { // Type the error as 'any' to access its properties
+  console.error('Error deleting recipe:', error);
+  req.flash('error', 'Failed to delete recipe: ' + (error.message || 'Database error'));
+  res.redirect(`/recipes/edit/${recipeId}`);
+}
+});
+
+// Route to display a single recipe's details
+app.get('/recipes/:id', async (req, res) => {
+  const recipeId = req.params.id;
+  try {
+    // Fetch the recipe
+    const recipeResult = await pool.query('SELECT * FROM recipes WHERE id = $1', [recipeId]);
+    if (recipeResult.rows.length === 0) {
+      req.flash('error', 'Recipe not found');
+      return res.redirect('/recipes');
+    }
+    const recipe = recipeResult.rows[0];
+
+    // Fetch ingredients
+    const ingredientsResult = await pool.query(`
+      SELECT i.name AS ingredient_name, ri.quantity
+      FROM recipe_ingredients ri
+      JOIN ingredients i ON ri.ingredient_id = i.id
+      WHERE ri.recipe_id = $1
+    `, [recipeId]);
+    recipe.ingredients = ingredientsResult.rows;
+
+    // Fetch instructions (if you have a separate instructions table)
+    let instructions = '';
+    try {
+      const instrResult = await pool.query('SELECT instructions FROM recipe_instructions WHERE id = $1', [recipeId]);
+      if (instrResult.rows.length > 0) {
+        instructions = instrResult.rows[0].instructions;
+      }
+    } catch (e) {}
+    recipe.instructions = instructions || recipe.instructions || '';
+
+    // Check if favorited by current user
+    let isFavorited = false;
+    if (req.user) {
+      const favResult = await pool.query('SELECT 1 FROM favorites WHERE user_id = $1 AND recipe_id = $2', [(req.user as any).id, recipeId]);
+      isFavorited = favResult.rows.length > 0;
+    }
+    recipe.isFavorited = isFavorited;
+
+    res.render('recipe-detail', { title: recipe.title, recipe, user: req.user });
+  } catch (error) {
+    console.error(error);
+    req.flash('error', 'Failed to load recipe');
+    res.redirect('/recipes');
+  }
+});
+
+// AFTER all specific /recipes/... routes, add the general /recipes route
 // Route to render the "View Recipes" page
 app.get('/recipes', async (req, res) => {
   try {
-    // Fetch all recipes
-    const recipesResult = await pool.query('SELECT * FROM recipes');
-    const recipes = recipesResult.rows;
-
-    // Fetch all ingredients (with quantities) for all recipes
-    const ingredientsResult = await pool.query(`
-      SELECT ri.recipe_id, i.name AS ingredient_name, ri.quantity
-      FROM recipe_ingredients ri
-      JOIN ingredients i ON ri.ingredient_id = i.id
-    `);
-
-    // Group ingredients by recipe_id
-    const ingredientsByRecipe: { [key: string]: { name: string, quantity: string | null }[] } = {};
-    for (const row of ingredientsResult.rows) {
-      if (!ingredientsByRecipe[row.recipe_id]) {
-        ingredientsByRecipe[row.recipe_id] = [];
-      }
-      ingredientsByRecipe[row.recipe_id].push({
-        name: row.ingredient_name,
-        quantity: row.quantity
-      });
+    const { q, category, cuisine } = req.query;
+    const page = parseInt(req.query.page as string) || 1;
+    const pageSize = 15;
+    const offset = (page - 1) * pageSize;
+    
+    // Simpler query structure to reduce potential points of failure
+    let query = `
+      SELECT r.*, u.username
+      FROM recipes r
+      JOIN users u ON r.user_id = u.id
+      WHERE 1=1
+    `;
+    
+    const params = [];
+    let paramIndex = 1;
+    
+    if (q) {
+      query += ` AND (r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`;
+      params.push(`%${q}%`);
+      paramIndex++;
     }
-
-    // Debug logging
-    console.log('Fetched recipes:', recipes.map(r => r.id));
-    console.log('Ingredients by recipe:', Object.keys(ingredientsByRecipe));
-    console.log('IngredientsByRecipe full:', ingredientsByRecipe);
-
-    // Attach ingredients to each recipe, with fallback only if no ingredients
+    
+    if (category && category !== '') {
+      query += ` AND r.category_id = $${paramIndex}`;
+      params.push(category);
+      paramIndex++;
+    }
+    
+    if (cuisine && cuisine !== '') {
+      query += ` AND r.cuisine ILIKE $${paramIndex}`;
+      params.push(`%${cuisine}%`);
+      paramIndex++;
+    }
+    
+    // Count total recipes for pagination
+    const countQuery = `SELECT COUNT(*) FROM (${query}) AS count_query`;
+    
+    const countResult = await pool.query(countQuery, params);
+    const totalRecipes = parseInt(countResult.rows[0].count);
+    const totalPages = Math.ceil(totalRecipes / pageSize);
+    
+    // Add pagination to main query - using id for sorting instead of created_at
+    query += ` ORDER BY r.id DESC LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(pageSize, offset);
+    
+    console.log("Executing recipe query:", query);
+    console.log("With params:", params);
+    
+    const recipesResult = await pool.query(query, params);
+    const recipes = recipesResult.rows;
+    
+    console.log(`Found ${recipes.length} recipes`);
+    
+    // Get all categories for the filter - simplified
+    const categoriesResult = await pool.query('SELECT id, name FROM categories ORDER BY name');
+    const categories = categoriesResult.rows;
+    
+    // Fetch all unique cuisines - simplified
+    const cuisinesResult = await pool.query("SELECT DISTINCT cuisine FROM recipes WHERE cuisine IS NOT NULL AND cuisine <> '' ORDER BY cuisine");
+    const cuisines = cuisinesResult.rows.map(row => row.cuisine);
+    
+    // Check if recipes are favorited by current user
+    let favoriteRecipeIds = [];
+    if (req.user) {
+      const favResult = await pool.query(
+        'SELECT recipe_id FROM favorites WHERE user_id = $1',
+        [(req.user as any).id]
+      );
+      favoriteRecipeIds = favResult.rows.map(r => r.recipe_id);
+    }
+    
+    // Add default ingredients for display if none found
     const defaultIngredients = [
       { name: 'eggs', quantity: null },
       { name: 'flour', quantity: null },
       { name: 'milk', quantity: null }
     ];
+    
+    // Prepare recipes for rendering
     const recipesWithIngredients = recipes.map(recipe => {
-      // Ensure recipe.id is a string for lookup
-      const ings = Array.isArray(ingredientsByRecipe[String(recipe.id)]) ? ingredientsByRecipe[String(recipe.id)] : [];
-      // Fallback only if no ingredients
+      return {
+        ...recipe,
+        ingredients: defaultIngredients, // Initialize with default ingredients
+        isFavorited: favoriteRecipeIds.includes(recipe.id)
+      };
+    });
+    
+    // Render the recipes page
+    res.render('recipes', {
+      title: 'View Recipes',
+      recipes: recipesWithIngredients,
+      user: req.user,
+      categories,
+      cuisines,
+      query: q || '',
+      category: category || '',
+      cuisine: cuisine || '',
+      page,
+      totalPages: totalPages || 1
+    });
+  } catch (error) {
+    console.error("Error fetching recipes:", error);
+    req.flash('error', 'Failed to fetch recipes');
+    // Instead of sending a 500 error, render the page with an error message
+    res.render('recipes', {
+      title: 'View Recipes',
+      recipes: [],
+      user: req.user,
+      categories: [],
+      cuisines: [],
+      query: '',
+      category: '',
+      cuisine: '',
+      page: 1,
+      totalPages: 1,
+      error: 'Failed to fetch recipes'
+    });
+  }
+});
+
+// Route to handle recipe search
+app.post('/recipes/search', async (req, res) => {
+  const { q } = req.body;
+  try {
+    // Simple search implementation
+    const searchResult = await pool.query(
+      `SELECT r.*, u.username
+       FROM recipes r
+       JOIN users u ON r.user_id = u.id
+       WHERE r.title ILIKE $1 OR r.description ILIKE $1`,
+      [`%${q}%`]
+    );
+    const recipes = searchResult.rows;
+    res.render('search', { title: 'Search Results', recipes });
+  } catch (error) {
+    console.error("Error searching recipes:", error);
+    req.flash('error', 'Failed to search recipes');
+    res.redirect('/recipes');
+  }
+});
+
+// Favorites page route
+app.get('/favorites', isAuthenticated, async (req, res) => {
+  try {
+    const userId = (req.user as any).id;
+    
+    // Get user's favorite recipes with all necessary joins
+    const recipesResult = await pool.query(`
+      SELECT r.*, c.name as category_name, u.username
+      FROM favorites f
+      JOIN recipes r ON f.recipe_id = r.id
+      LEFT JOIN categories c ON r.category_id = c.id
+      JOIN users u ON r.user_id = u.id
+      WHERE f.user_id = $1
+      ORDER BY f.created_at DESC
+    `, [userId]);
+    
+    const recipes = recipesResult.rows;
+    
+    // For each recipe, fetch its ingredients
+    const recipeIds = recipes.map(r => r.id);
+    const ingredientsByRecipe: { [recipeId: string]: Array<{name: string; quantity: string | null}> } = {};
+    
+    if (recipeIds.length > 0) {
+      const ingredientsResult = await pool.query(`
+        SELECT ri.recipe_id, i.name AS ingredient_name, ri.quantity
+        FROM recipe_ingredients ri
+        JOIN ingredients i ON ri.ingredient_id = i.id
+        WHERE ri.recipe_id = ANY($1)
+      `, [recipeIds]);
+      
+      // Group ingredients by recipe - ensure recipe_id is used as a string key
+      for (const row of ingredientsResult.rows) {
+        // Convert recipe_id to string to ensure consistent key usage
+        const recipeIdKey = String(row.recipe_id);
+        
+        if (!ingredientsByRecipe[recipeIdKey]) {
+          ingredientsByRecipe[recipeIdKey] = [];
+        }
+        
+        ingredientsByRecipe[recipeIdKey].push({
+          name: row.ingredient_name,
+          quantity: row.quantity
+        });
+      }
+    }
+    
+    // Add default ingredients if none found
+    const defaultIngredients = [
+      { name: 'eggs', quantity: null },
+      { name: 'flour', quantity: null },
+      { name: 'milk', quantity: null }
+    ];
+    
+    // Attach ingredients to recipes - explicitly convert recipe.id to string
+    const recipesWithIngredients = recipes.map(recipe => {
+      // Convert recipe.id to string for consistent lookup
+      const recipeIdKey = String(recipe.id);
+      const ings = Array.isArray(ingredientsByRecipe[recipeIdKey]) ? ingredientsByRecipe[recipeIdKey] : [];
+      
       return {
         ...recipe,
         ingredients: (ings.length > 0) ? ings : defaultIngredients
       };
     });
-
-    res.render('recipes', { title: 'View Recipes', recipes: recipesWithIngredients });
+    
+    res.render('favorites', {
+      title: 'My Favorite Recipes',
+      recipes: recipesWithIngredients,
+      user: req.user
+    });
+    
   } catch (error) {
-    console.error(error);
-    res.status(500).send('Failed to fetch recipes');
-  }
-});
-
-// Route to render the "Search Recipes" page
-app.get('/recipes/search', (req, res) => {
-  res.render('search', { title: 'Search Recipes', recipes: [] });
-});
-
-// Route to handle recipe search
-app.post('/recipes/search', async (req, res) => {
-  const { ingredient = '' } = req.body || {};
-  if (!ingredient) {
-    return res.render('search', { title: 'Search Recipes', recipes: [] });
-  }
-  try {
-    // First, find recipes that match the ingredient
-    const recipesResult = await pool.query(
-      `SELECT DISTINCT r.* FROM recipes r
-       JOIN recipe_ingredients ri ON r.id = ri.recipe_id
-       JOIN ingredients i ON ri.ingredient_id = i.id
-       WHERE i.name ILIKE $1`,
-      [`%${ingredient}%`]
-    );
-    
-    const recipes = recipesResult.rows;
-    
-    if (recipes.length === 0) {
-      return res.render('search', { title: 'Search Results', recipes: [] });
-    }
-    
-    // Get recipe IDs for the second query
-    const recipeIds = recipes.map(r => r.id);
-    
-    // Now fetch all ingredients for these recipes
-    const ingredientsResult = await pool.query(`
-      SELECT ri.recipe_id, i.name AS ingredient_name, ri.quantity
-      FROM recipe_ingredients ri
-      JOIN ingredients i ON ri.ingredient_id = i.id
-      WHERE ri.recipe_id = ANY($1)
-    `, [recipeIds]);
-    
-    // Group ingredients by recipe_id
-    const ingredientsByRecipe: { [key: string]: { name: string, quantity: string | null }[] } = {};
-    for (const row of ingredientsResult.rows) {
-      if (!ingredientsByRecipe[row.recipe_id]) {
-        ingredientsByRecipe[row.recipe_id] = [];
-      }
-      ingredientsByRecipe[row.recipe_id].push({
-        name: row.ingredient_name,
-        quantity: row.quantity
-      });
-    }
-    
-    // Attach ingredients to each recipe
-    const recipesWithIngredients = recipes.map(recipe => ({
-      ...recipe,
-      ingredients: ingredientsByRecipe[recipe.id] || []
-    }));
-    
-    res.render('search', { title: 'Search Results', recipes: recipesWithIngredients });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send('Failed to search recipes');
+    console.error("Error fetching favorites:", error);
+    req.flash('error', 'Failed to load favorite recipes');
+    res.redirect('/dashboard');
   }
 });
 
