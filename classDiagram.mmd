@@ -1,35 +1,64 @@
 classDiagram
-    %% Define entities in business terms
-    class User {
-        Unique identifier
-        Username
-        Email
-        Password
+    class Users {
+        +id
+        +username
+        +email
+        +password
+        +created_at
+        +updated_at
+        +is_active
+        +last_login
+        +bio
+        +profile_image
     }
-    
-    class Recipe {
-        Title
-        Description
-        Instructions
-        Created by User
-        Belongs to Category (optional)
+
+    class Recipes {
+        +id
+        +title
+        +description
+        +user_id
+        +cuisine
+        +category_id
+        +instructions
+        +search_vector
+        +embedding
     }
-    
-    class Ingredient {
-        Name
+
+    class Ingredients {
+        +id
+        +name
     }
-    
-    class RecipeIngredient {
-        Quantity
-        Links Recipe and Ingredient
+
+    class RecipeIngredients {
+        +recipe_id
+        +ingredient_id
+        +quantity
     }
-    
-    class Category {
-        Name
+
+    class Categories {
+        +id
+        +name
     }
-    
-    %% Define relationships with business focus
-    User "1" <-- "*" Recipe : creates
-    Category "0..1" <-- "*" Recipe : organizes
-    Recipe "1" <-- "*" RecipeIngredient : includes
-    Ingredient "1" <-- "*" RecipeIngredient : used in
+
+    class Sessions {
+        +id
+        +user_id
+        +data
+        +created_at
+        +expires
+    }
+
+    class Favorites {
+        +id
+        +user_id
+        +recipe_id
+        +created_at
+    }
+
+    Users "1" --> "*" Recipes : owns
+    Recipes "1" --> "*" RecipeIngredients : contains
+    RecipeIngredients "*" --> "1" Ingredients : includes
+    Recipes "*" --> "1" Categories : categorized as
+    Users "1" --> "*" Sessions : has
+    Users "1" --> "*" Favorites : saves
+    Favorites "*" --> "1" Recipes : references
