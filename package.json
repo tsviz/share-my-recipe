@@ -6,7 +6,9 @@
     "start": "ts-node src/index.ts",
     "dev": "ts-node src/index.ts",
     "test": "jest",
-    "build:css": "tailwindcss build src/styles/tailwind.css -o src/styles/output.css"
+    "build": "tsc --noEmit --skipLibCheck",
+    "build:css": "tailwindcss build src/styles/tailwind.css -o src/styles/output.css",
+    "lint": "eslint ."
   },
   "keywords": [],
   "author": "",
@@ -43,6 +45,8 @@
     "@types/passport": "^1.0.17",
     "@types/passport-local": "^1.0.38",
     "@types/pg": "^8.11.13",
+    "eslint": "^9.25.1",
+    "globals": "^16.0.0",
     "jest": "^29.7.0",
     "multer": "^1.4.5-lts.2",
     "ts-jest": "^29.3.2",
