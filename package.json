@@ -5,13 +5,15 @@
   "scripts": {
     "start": "ts-node src/index.ts",
     "dev": "ts-node src/index.ts",
-    "test": "jest"
+    "test": "jest",
+    "build:css": "tailwindcss build src/styles/tailwind.css -o src/styles/output.css"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "description": "",
   "dependencies": {
+    "autoprefixer": "^10.4.21",
     "axios": "^1.9.0",
     "bcrypt": "^5.1.1",
     "body-parser": "^2.2.0",
@@ -25,7 +27,9 @@
     "node-fetch": "^3.3.2",
     "passport": "^0.7.0",
     "passport-local": "^1.0.0",
-    "pg": "^8.14.1"
+    "pg": "^8.14.1",
+    "postcss": "^8.5.3",
+    "tailwindcss": "^4.1.4"
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^11.4.2",

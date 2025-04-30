@@ -87,12 +87,14 @@
             const foodEmojis = ['🍕','🍔','🍣','🍜','🍩','🍦','🍉','🍇','🍓','🍤','🥑','🥕','🍅','🍞','🥨','🍟','🍪','🍰','🍎','🍗','🍳'];
             const overlay = document.createElement('div');
             overlay.className = 'food-overlay';
-            for (let i = 0; i < 18; i++) {
+            // Reduce the number of emojis and adjust animation duration
+            for (let i = 0; i < 5; i++) { // Reduced from 18 to 10
                 const emoji = document.createElement('div');
                 emoji.className = 'food-emoji';
                 emoji.style.left = Math.random() * 100 + 'vw';
                 emoji.style.top = Math.random() * 100 + 'vh';
-                emoji.style.animationDelay = (Math.random() * 8) + 's';
+                emoji.style.animationDelay = (Math.random() * 6) + 's'; // Reduced max delay from 8s to 6s
+                emoji.style.fontSize = '2rem'; // Reduced size from 2.5rem to 2rem
                 emoji.textContent = foodEmojis[Math.floor(Math.random() * foodEmojis.length)];
                 overlay.appendChild(emoji);
             }
@@ -163,3 +165,5 @@
             </div>
         <% } %>
     </div>
+</body>
+</html>

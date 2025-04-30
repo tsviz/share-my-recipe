@@ -496,26 +496,30 @@ app.post('/recipes/search', async (req, res) => {
   const about = req.body.about || '';
   let recommendations = [];
   let aiExplanation = ''; // Will hold the AI's explanation of what it understood
-  
+  let positiveVibe = ''; // Will hold the AI's positive vibe comment
+
   try {
     console.log("=== USER PREFERENCE DETECTION ===");
     console.log("User input:", about);
-    
+
     // Use the AI-powered search service
     const searchResults = await recipeSearchService.searchRecipes(about);
-    
+
     // Extract AI explanation if available
     if (searchResults.length > 0 && searchResults[0].ai_analysis) {
       aiExplanation = searchResults[0].ai_analysis;
       // Remove the ai_analysis field from results to avoid confusion in the view
       searchResults.forEach(recipe => delete recipe.ai_analysis);
     }
-    
+
     console.log(`AI search returned ${searchResults.length} matching recipes`);
-    
+
     // Limit to 10 recommendations
     recommendations = searchResults.slice(0, 12);
-    
+
+    // Generate a positive vibe comment
+    positiveVibe = await recipeSearchService.generatePositiveVibe(about, searchResults);
+
     if (recommendations.length === 0) {
       req.flash('info', 'No recipes match your preferences. Try adjusting your requirements.');
     }
@@ -523,17 +527,18 @@ app.post('/recipes/search', async (req, res) => {
     console.error("Error in AI recipe recommendations:", e);
     recommendations = [];
   }
-  
+
   // Final check: log all recommendations
   console.log("=== FINAL RECOMMENDATIONS ===");
   recommendations.forEach(recipe => {
     console.log(`- ${recipe.title} (${recipe.description || 'No description'})`);
   });
-  
+
   res.render('search', {
     about,
     recommendations,
     aiExplanation,
+    positiveVibe,
     title: 'Personalized Recipe Recommendations',
     ai_enabled: true
   });

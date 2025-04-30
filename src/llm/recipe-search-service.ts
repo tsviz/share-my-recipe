@@ -139,6 +139,83 @@ export class RecipeSearchService {
       }
   
   /**
+   * If no parameters are returned from the user query, use the LLM to generate parameters.
+   * @param userQuery The user's input query.
+   * @returns Generated parameters for the database search.
+   */
+  private async generateParametersWithLLM(userQuery: string): Promise<any> {
+    try {
+      const prompt = `The user query is: "${userQuery}". Generate structured parameters for a recipe search, including mainDish, cuisines, includeIngredients, excludeIngredients, dietaryPreferences, and cookingMethods.`;
+      const aiResponse = await this.llmClient.generateCompletion(prompt, {});
+      const generatedParameters = JSON.parse(aiResponse);
+      return generatedParameters;
+    } catch (error) {
+      console.error('Error generating parameters with LLM:', error);
+      return {
+        mainDish: [],
+        cuisines: [],
+        includeIngredients: [],
+        excludeIngredients: [],
+        dietaryPreferences: [],
+        cookingMethods: []
+      };
+    }
+  }
+
+  /**
+   * Enhance fallback mechanism to use LLM for generating meaningful parameters.
+   * Handles non-JSON responses gracefully.
+   * @param userQuery The user's input query.
+   * @returns Enhanced parameters for the database search.
+   */
+  private async enhanceFallbackWithLLM(userQuery: string): Promise<any> {
+    try {
+      const prompt = `The user query is: "${userQuery}". Generate detailed and meaningful parameters for a recipe search, including mainDish, cuisines, includeIngredients, excludeIngredients, dietaryPreferences, and cookingMethods. Return the result as a JSON object.`;
+      const aiResponse = await this.llmClient.generateCompletion(prompt, {});
+
+      // Attempt to parse the response as JSON
+      try {
+        const enhancedParameters = JSON.parse(aiResponse);
+        return enhancedParameters;
+      } catch (parseError) {
+        console.error('Error parsing AI response as JSON:', parseError);
+
+        // Attempt to extract JSON-like content from the response
+        const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            const extractedParameters = JSON.parse(jsonMatch[0]);
+            return extractedParameters;
+          } catch (extractionError) {
+            console.error('Error extracting JSON-like content:', extractionError);
+          }
+        }
+
+        // Fallback to default structure if parsing fails
+        console.warn('Falling back to default parameters due to invalid AI response.');
+        return {
+          mainDish: [],
+          cuisines: [],
+          includeIngredients: [],
+          excludeIngredients: [],
+          dietaryPreferences: [],
+          cookingMethods: []
+        };
+      }
+    } catch (error) {
+      console.error('Error enhancing fallback with LLM:', error);
+      return {
+        mainDish: [],
+        cuisines: [],
+        includeIngredients: [],
+        excludeIngredients: [],
+        dietaryPreferences: [],
+        cookingMethods: []
+      };
+    }
+  }
+
+  /**
    * Search recipes with AI-enhanced understanding of user's preferences
    * The main function is to evaluate user statements and convert them into appropriate database search parameters
    */
@@ -172,6 +249,33 @@ export class RecipeSearchService {
       // AI analysis and SQL query generation
       const aiAnalysis = await this.analyzeQueryWithAI(userQuery);
       console.log('AI analysis of query:', aiAnalysis);
+
+      // Filter out generic or 'Not specified' values from AI analysis
+      aiAnalysis.mainDish = aiAnalysis.mainDish.filter((dish: string) => dish !== 'Not specified');
+      aiAnalysis.cuisines = aiAnalysis.cuisines.filter((cuisine: string) => cuisine !== 'Not specified');
+      aiAnalysis.includeIngredients = aiAnalysis.includeIngredients.filter((ingredient: string) => ingredient !== 'Not specified');
+      aiAnalysis.excludeIngredients = aiAnalysis.excludeIngredients.filter((ingredient: string): boolean => ingredient !== 'Not specified');
+      aiAnalysis.dietaryPreferences = aiAnalysis.dietaryPreferences.filter((preference: string): boolean => preference !== 'Not specified');
+      aiAnalysis.cookingMethods = aiAnalysis.cookingMethods.filter((method: string): boolean => method !== 'Not specified');
+
+      // If all fields are empty after filtering, enhance with LLM
+      if (
+        aiAnalysis.mainDish.length === 0 &&
+        aiAnalysis.cuisines.length === 0 &&
+        aiAnalysis.includeIngredients.length === 0 &&
+        aiAnalysis.excludeIngredients.length === 0 &&
+        aiAnalysis.dietaryPreferences.length === 0 &&
+        aiAnalysis.cookingMethods.length === 0
+      ) {
+        console.log('All AI analysis fields are empty after filtering. Enhancing with LLM.');
+        const enhancedParameters = await this.enhanceFallbackWithLLM(userQuery);
+        aiAnalysis.mainDish = enhancedParameters.mainDish;
+        aiAnalysis.cuisines = enhancedParameters.cuisines;
+        aiAnalysis.includeIngredients = enhancedParameters.includeIngredients;
+        aiAnalysis.excludeIngredients = enhancedParameters.excludeIngredients;
+        aiAnalysis.dietaryPreferences = enhancedParameters.dietaryPreferences;
+        aiAnalysis.cookingMethods = enhancedParameters.cookingMethods;
+      }
 
       // Dynamically resolve category terms like "vegetables" into their specific items
       const expandedExclusions: string[][] = await Promise.all(
@@ -1398,6 +1502,24 @@ export class RecipeSearchService {
     
     console.log('Created fallback analysis from query:', result);
     return result;
+  }
+
+  /**
+   * Generate a positive vibe response using the LLM, tailored to the search results.
+   * @param userQuery The user's input query.
+   * @param searchResults The recipes returned from the search.
+   * @returns A positive, human-like response from the LLM.
+   */
+  public async generatePositiveVibe(userQuery: string, searchResults: any[]): Promise<string> {
+    try {
+      const recipeTitles = searchResults.map(recipe => recipe.title).slice(0, 3).join(', ');
+      const prompt = `Generate a positive and engaging response for the following user query: "${userQuery}". Include references to these recipes: ${recipeTitles}. The response should be friendly and enthusiastic.`;
+      const aiResponse = await this.llmClient.generateCompletion(prompt, {});
+      return aiResponse.trim();
+    } catch (error) {
+      console.error('Error generating positive vibe with LLM:', error);
+      return 'Yummy! Here are some recipes you might enjoy!';
+    }
   }
 }
 

@@ -1,5 +1,73 @@
 <%- include('partials/header') %>
 
+<style>
+    .loading-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background-color: rgba(255, 255, 255, 0.8);
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      z-index: 1000;
+      visibility: hidden;
+    }
+
+    .loading-overlay.active {
+      visibility: visible;
+    }
+
+    .loading-animation {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .loading-animation .spinner {
+      width: 50px;
+      height: 50px;
+      border: 5px solid #f3f3f3;
+      border-top: 5px solid #3498db;
+      border-radius: 50%;
+      animation: spin 1s linear infinite;
+    }
+
+    @keyframes spin {
+      0% { transform: rotate(0deg); }
+      100% { transform: rotate(360deg); }
+    }
+
+    .loading-animation p {
+      margin-top: 10px;
+      font-size: 1.2em;
+      color: #555;
+    }
+
+    @keyframes pulse {
+      0% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.2); opacity: 0.7; }
+      100% { transform: scale(1); opacity: 1; }
+    }
+    
+    .recipe-link {
+      color: #4fd1c5;
+      text-decoration: underline;
+      transition: color 0.2s;
+    }
+    
+    .recipe-link:hover {
+      color: #38b2ac;
+    }
+    
+    .ai-header {
+      border-bottom: 1px solid rgba(79,209,197,0.3);
+      padding-bottom: 0.5rem;
+      margin-bottom: 1rem;
+    }
+</style>
+
 <div class="container mt-4">
   <h1><%= title %></h1>
   
@@ -15,18 +83,78 @@
       <strong>AI Assistant:</strong> <%= aiExplanation %>
     </div>
   <% } %>
+
+  <% if (locals.ai_enabled && locals.positiveVibe) { %>
+    <div class="mt-6 rounded-lg shadow-sm position-relative" style="background-color: rgba(25,32,43,0.92); border-left: 3px solid #4fd1c5; padding: 1.5rem;">
+      <!-- Minimal accent line -->
+      <div class="position-absolute" style="top: 0; left: 0; width: 40%; height: 1px; background: linear-gradient(90deg, #4fd1c5 0%, transparent 100%);"></div>
+      
+      <h2 class="d-flex align-items-center text-white mb-3 ai-header" style="font-size: 1.25rem; font-weight: 500;">
+        <i class="fas fa-robot me-2" style="color: #4fd1c5; font-size: 0.9rem;"></i>
+        <span>AI Assistant</span>
+      </h2>
+      
+      <div class="text-white recipe-recommendations" style="font-size: 1.05rem; letter-spacing: 0.015rem; font-weight: 300; line-height: 1.6; font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;">
+        <% 
+          // Convert recommendation text to HTML with formatting
+          let formattedText = positiveVibe;
+          
+          // Process the text to highlight recipe names based on available recommendations
+          if (locals.recommendations && recommendations.length > 0) {
+            const availableRecipes = recommendations.map(recipe => recipe.title);
+            
+            // Replace recipe names with links if they exist in recommendations
+            availableRecipes.forEach(recipeName => {
+              const recipeIndex = recommendations.findIndex(r => r.title === recipeName);
+              if (recipeIndex >= 0) {
+                const recipeRegex = new RegExp(recipeName, 'gi');
+                formattedText = formattedText.replace(recipeRegex, `<a href="#recipe-${recipeIndex}" class="recipe-link">${recipeName}</a>`);
+              }
+            });
+          }
+          
+          // Apply standard formatting
+          formattedText = formattedText.replace(/\*\*([^*]+)\*\*/g, '<strong class="text-teal-300">$1</strong>');
+          formattedText = formattedText.replace(/(\d+\.)\s([^:]+):/g, '<div class="mb-2 mt-3"><span class="text-teal-300 font-medium">$1</span> <span class="font-medium">$2</span>:</div>');
+          formattedText = formattedText.split('\n').join('<br>');
+          
+          // Add external recipe links
+          formattedText = formattedText.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" class="recipe-link">$1</a>');
+        %>
+        <%- formattedText %>
+      </div>
+      
+      <% if (locals.recommendations && recommendations.length > 0) { %>
+        <div class="mt-4 pt-3" style="border-top: 1px solid rgba(79,209,197,0.3);">
+          <p class="text-white font-medium mb-2">Available recipes in our database:</p>
+          <ul style="color: white; list-style-type: none; padding-left: 0;">
+            <% recommendations.slice(0, 5).forEach((recipe, index) => { %>
+              <li class="mb-1" id="recipe-<%= index %>">
+                <i class="fas fa-utensils me-2" style="color: #4fd1c5; font-size: 0.8rem;"></i>
+                <a href="/recipes/<%= recipe.id %>" class="recipe-link"><%= recipe.title %></a>
+                <% if (recipe.cuisine) { %><small class="text-muted">(<%= recipe.cuisine %>)</small><% } %>
+              </li>
+            <% }) %>
+            <% if (recommendations.length > 5) { %>
+              <li class="mt-2 text-white-50"><small>+ <%= recommendations.length - 5 %> more recipes available...</small></li>
+            <% } %>
+          </ul>
+        </div>
+      <% } %>
+    </div>
+  <% } %>
   
   <% if (locals.recommendations && recommendations.length > 0) { %>
-    <h2>Recipe Recommendations</h2>
+    <h2 class="mb-4 text-center">Recipe Recommendations</h2>
     <div class="row">
-      <% recommendations.forEach(recipe => { %>
-        <div class="col-md-4 mb-4">
-          <div class="card h-100">
+      <% recommendations.forEach((recipe, index) => { %>
+        <div class="col-md-6 mb-4">
+          <div class="card shadow-sm">
             <div class="card-body">
-              <h5 class="card-title"><%= recipe.title %></h5>
-              <p class="card-text"><%= recipe.description %></p>
-              <p class="text-muted"><small>Cuisine: <%= recipe.cuisine || 'Not specified' %></small></p>
-              <a href="/recipes/<%= recipe.id %>" class="btn btn-sm btn-primary">View Recipe</a>
+              <h5 class="card-title text-primary"><%= recipe.title %></h5>
+              <p class="card-text text-muted" style="font-size: 1em; line-height: 1.6; color: #333;"><%= recipe.description %></p>
+              <p class="text-muted" style="margin-top: 10px;"><small><strong>Cuisine:</strong> <%= recipe.cuisine || 'Not specified' %></small></p>
+              <a href="/recipes/<%= recipe.id %>" class="btn btn-outline-primary btn-sm" target="_blank">View Recipe</a>
             </div>
           </div>
         </div>
@@ -38,5 +166,24 @@
     </div>
   <% } %>
 </div>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+      const form = document.querySelector('form');
+      const loadingOverlay = document.createElement('div');
+      loadingOverlay.className = 'loading-overlay';
+      loadingOverlay.innerHTML = `
+        <div class="loading-animation">
+          <div class="spinner"></div>
+          <p>AI is working its magic...</p>
+        </div>
+      `;
+      document.body.appendChild(loadingOverlay);
+
+      form.addEventListener('submit', function() {
+        loadingOverlay.classList.add('active');
+      });
+    });
+</script>
 
 <%- include('partials/footer') %>
