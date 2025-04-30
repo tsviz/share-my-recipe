@@ -22,7 +22,7 @@ export class LocalAIClient {
     containerized?: boolean;
   } = {}) {
     this.port = options.port || 11434;
-    this.apiUrl = options.apiUrl || `http://localhost:${this.port}`;
+    this.apiUrl = options.apiUrl || process.env.LLM_SERVICE_URL || `http://localhost:${this.port}`;
     // Prioritize environment variable for model name
     this.modelName = process.env.LLM_MODEL || options.modelName || 'mistral';
     this.containerized = options.containerized || 
