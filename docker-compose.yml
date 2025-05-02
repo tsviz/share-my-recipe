@@ -4,7 +4,7 @@ services:
     image: postgres:15
     environment:
       POSTGRES_PASSWORD: yourpassword
-      POSTGRES_DB: postgres
+      POSTGRES_DB: mydb
     # volumes:
     #   - postgres_data:/var/lib/postgresql/data
     ports:
@@ -14,6 +14,8 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
+    networks:
+      - custom_network
 
   # Recipe app 
   recipe_app:
@@ -27,8 +29,8 @@ services:
       - DB_HOST=postgres
       - DB_USER=postgres
       - DB_PASSWORD=yourpassword
-      - DB_NAME=postgres
-      - LLM_SERVICE_URL=http://host.docker.internal:11434
+      - DB_NAME=mydb
+      - LLM_SERVICE_URL=http://host.docker.internal:11434 # Ensure this points to the host machine where the LLM service is running
       - LLM_MODEL=mistral
       - OLLAMA_MODEL=mistral
       - REQUEST_TIMEOUT=60000
@@ -43,7 +45,9 @@ services:
     #   - ./tsconfig.json:/app/tsconfig.json
     #   - recipe_app_node_modules:/app/node_modules
     extra_hosts:
-      - "host.docker.internal:host-gateway"
+      - "host.docker.internal:host-gateway" # Allows access to host services from the container
+    networks:
+      - custom_network
 
   # Liquibase for database migrations
   liquibase:
@@ -55,9 +59,15 @@ services:
       - .:/liquibase/changelog
     command: >
       --changelog-file=liquibase-changelog.xml
-      --url=jdbc:postgresql://postgres:5432/postgres
+      --url=jdbc:postgresql://postgres:5432/mydb
       --username=postgres
       --password=yourpassword
       --search-path=/liquibase/changelog/src/db/migrations
       update
+    networks:
+      - custom_network
+
+networks:
+  custom_network:
+    driver: bridge
 
