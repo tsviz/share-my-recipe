@@ -190,6 +190,12 @@ VALUES
   ('Mexican', 'cuisine', 'Cuisine from Mexico, known for tacos, burritos, and spicy flavors')
 ON CONFLICT DO NOTHING;
 
+-- Add Latin American cuisine to the glossary
+INSERT INTO glossary_terms (standard_term, term_type, description)
+VALUES
+  ('Latin American', 'cuisine', 'Cuisine from Latin America, known for its vibrant flavors, diverse ingredients, and cultural influences')
+ON CONFLICT DO NOTHING;
+
 -- Add more related terms for cuisines and dishes
 INSERT INTO glossary_related_terms (source_term_id, related_term_id, relation_type, strength)
 VALUES

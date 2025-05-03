@@ -216,6 +216,128 @@ export class RecipeSearchService {
   }
 
   /**
+   * Ensure Jewish cuisine is always considered in the recommendations
+   */
+  private ensureJewishCuisineInclusion(aiAnalysis: any): void {
+    if (!aiAnalysis.cuisines.includes('Jewish')) {
+      console.log('Adding Jewish cuisine to the analysis');
+      aiAnalysis.cuisines.push('Jewish');
+    }
+  }
+
+  /**
+   * Ensure all recognized cuisines are included in the recommendations
+   */
+  private ensureAllCuisinesInclusion(aiAnalysis: any): void {
+    const recognizedCuisines = [
+      'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
+      'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
+      'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
+    ];
+
+    recognizedCuisines.forEach(cuisine => {
+      if (!aiAnalysis.cuisines.includes(cuisine)) {
+        console.log(`Adding ${cuisine} cuisine to the analysis`);
+        aiAnalysis.cuisines.push(cuisine);
+      }
+    });
+  }
+
+  /**
+   * Adjust SQL query to prioritize user-specified cuisines
+   */
+  private prioritizeUserCuisine(sqlQuery: string, sqlParams: any[], userCuisine: string): string {
+    // Add user-specified cuisine as the first condition
+    sqlQuery += ` AND (r.cuisine ILIKE $${sqlParams.length + 1}`;
+    sqlParams.push(`%${userCuisine}%`);
+
+    // Add other cuisines as secondary conditions
+    for (let i = 0; i < sqlParams.length - 1; i++) {
+      sqlQuery += ` OR r.cuisine ILIKE $${i + 1}`;
+    }
+
+    sqlQuery += ')';
+    return sqlQuery;
+  }
+
+  /**
+   * Extract a specific cuisine requested by the user from query text
+   * Focuses on finding explicit cuisine requests
+   */
+  private extractSpecificCuisineFromQuery(query: string): string | null {
+    const lowerQuery = query.toLowerCase();
+    
+    // Check for specific cuisine requests like "Mexican food" or "Italian recipes"
+    const cuisineKeywords: {[key: string]: string} = {
+      'american': 'American',
+      'italian': 'Italian', 
+      'mexican': 'Mexican', 
+      'chinese': 'Chinese',
+      'japanese': 'Japanese', 
+      'thai': 'Thai', 
+      'indian': 'Indian',
+      'french': 'French', 
+      'mediterranean': 'Mediterranean',
+      'greek': 'Greek',
+      'spanish': 'Spanish',
+      'middle eastern': 'Middle Eastern',
+      'korean': 'Korean',
+      'vietnamese': 'Vietnamese',
+      'jewish': 'Jewish',
+      'german': 'German',
+      'ethiopian': 'Ethiopian',
+      'african': 'African',
+      'brazilian': 'Brazilian',
+      'caribbean': 'Caribbean'
+    };
+    
+    // Check for direct mentions of cuisines with food/recipe/cuisine
+    for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+      // Look for more specific requests like "X food" or "X cuisine" rather than just the cuisine name
+      const specificRequests = [
+        new RegExp(`${keyword}\\s+food`, 'i'),
+        new RegExp(`${keyword}\\s+recipe`, 'i'),
+        new RegExp(`${keyword}\\s+cuisine`, 'i'),
+        new RegExp(`${keyword}\\s+dish`, 'i'),
+        // Also handle "I like X food" patterns
+        new RegExp(`(?:like|want|love)\\s+${keyword}`, 'i')
+      ];
+      
+      for (const pattern of specificRequests) {
+        if (pattern.test(lowerQuery)) {
+          console.log(`Found specific request for ${cuisine} cuisine`);
+          return cuisine;
+        }
+      }
+    }
+    
+    // Check for phrases that more explicitly ask for a cuisine
+    const cuisinePatterns = [
+      /(?:want|looking for|need|find me)(?:\s+\w+)?\s+([a-zA-Z]+)(?:\s+food)/i,
+      /(?:want|looking for|need|find me)(?:\s+\w+)?\s+([a-zA-Z]+)(?:\s+recipes)/i,
+      /(?:want|looking for|need|find me)(?:\s+\w+)?\s+([a-zA-Z]+)(?:\s+cuisine)/i,
+      /(?:i like|i love|i prefer)(?:\s+\w+)?\s+([a-zA-Z]+)(?:\s+food)/i
+    ];
+    
+    for (const pattern of cuisinePatterns) {
+      const match = lowerQuery.match(pattern);
+      if (match && match[1]) {
+        const potentialCuisine = match[1].trim().toLowerCase();
+        
+        // Check if it matches one of our known cuisines
+        for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+          if (potentialCuisine === keyword.toLowerCase()) {
+            console.log(`Extracted explicit cuisine request: ${cuisine}`);
+            return cuisine;
+          }
+        }
+      }
+    }
+    
+    return null;
+  }
+
+  /**
    * Search recipes with AI-enhanced understanding of user's preferences
    * The main function is to evaluate user statements and convert them into appropriate database search parameters
    */
@@ -249,6 +371,12 @@ export class RecipeSearchService {
       // AI analysis and SQL query generation
       const aiAnalysis = await this.analyzeQueryWithAI(userQuery);
       console.log('AI analysis of query:', aiAnalysis);
+
+      // Ensure Jewish cuisine is included in the analysis
+      this.ensureJewishCuisineInclusion(aiAnalysis);
+
+      // Ensure all recognized cuisines are included in the analysis
+      this.ensureAllCuisinesInclusion(aiAnalysis);
 
       // Filter out generic or 'Not specified' values from AI analysis
       aiAnalysis.mainDish = aiAnalysis.mainDish.filter((dish: string) => dish !== 'Not specified');
@@ -299,84 +427,43 @@ export class RecipeSearchService {
       
       console.log('Expanded included ingredients:', flattenedInclusions);
 
-      // Build the base query
+      // Check if the user explicitly requested a specific cuisine
+      const requestedCuisine = this.extractCuisinesFromQuery(userQuery);
+      
+      // Build a SQL query that prioritizes the requested cuisine
       let sqlQuery = `
         SELECT r.id, r.title, r.description, r.cuisine, r.category_id
         FROM recipes r
         WHERE 1=1
       `;
-      
+
       const sqlParams: any[] = [];
       let paramIndex = 1;
-      
-      // Add exclusion filters for ingredients
-      if (flattenedExclusions.length > 0) {
-        for (const excludedIngredient of flattenedExclusions) {
-          // Exclude recipes where the ingredient appears in the ingredients list
-          sqlQuery += `
-            AND r.id NOT IN (
-              SELECT ri.recipe_id 
-              FROM recipe_ingredients ri 
-              JOIN ingredients i ON ri.ingredient_id = i.id 
-              WHERE i.name ILIKE $${paramIndex}
-            )
-          `;
-          sqlParams.push(`%${excludedIngredient}%`);
-          paramIndex++;
-          
-          // Also exclude recipes where the ingredient is mentioned in title or description
-          // This ensures we don't recommend recipes that prominently feature excluded ingredients
-          sqlQuery += `
-            AND (r.title NOT ILIKE $${paramIndex} AND r.description NOT ILIKE $${paramIndex})
-          `;
-          sqlParams.push(`%${excludedIngredient}%`);
-          paramIndex++;
-        }
+
+      // Filter by requested cuisine if one was specified
+      if (requestedCuisine) {
+        console.log(`User specifically requested ${requestedCuisine} cuisine, prioritizing it`);
+        sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
+        sqlParams.push(`%${requestedCuisine}%`);
+        paramIndex++;
       }
-      
-      // Add inclusion filters - recipes MUST include these ingredients
-      if (flattenedInclusions.length > 0) {
-        for (const includedIngredient of flattenedInclusions) {
-          sqlQuery += `
-            AND r.id IN (
-              SELECT ri.recipe_id 
-              FROM recipe_ingredients ri 
-              JOIN ingredients i ON ri.ingredient_id = i.id 
-              WHERE i.name ILIKE $${paramIndex}
-            )
-          `;
-          sqlParams.push(`%${includedIngredient}%`);
-          paramIndex++;
-        }
-      }
-      
-      // Add cuisine filters if specified
-      if (aiAnalysis.cuisines && aiAnalysis.cuisines.length > 0) {
-        const cuisineConditions: string[] = [];
-        for (const cuisine of aiAnalysis.cuisines) {
-          cuisineConditions.push(`r.cuisine ILIKE $${paramIndex}`);
-          sqlParams.push(`%${cuisine}%`);
-          paramIndex++;
-        }
-        if (cuisineConditions.length > 0) {
-          sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
-        }
-      }
-      
-      // Add main dish type filters if specified
+
+      // Add filters for main dish if specified
       if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
         const dishConditions: string[] = [];
+        
         for (const dish of aiAnalysis.mainDish) {
           dishConditions.push(`(r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`);
           sqlParams.push(`%${dish}%`);
           paramIndex++;
         }
+        
         if (dishConditions.length > 0) {
           sqlQuery += ` AND (${dishConditions.join(' OR ')})`;
         }
       }
 
-      // Add ordering logic - prioritize recipes that match the user's query
+      // Add ordering logic to prioritize relevant results
       sqlQuery += `
         ORDER BY 
           CASE
@@ -386,15 +473,14 @@ export class RecipeSearchService {
           END,
           r.popularity DESC LIMIT 20
       `;
-      
-      // Add the full query string as the last parameter for the ORDER BY clause
+
+      // Add the query as the parameter for sorting
       sqlParams.push(`%${userQuery}%`);
 
       console.log('Executing AI-enhanced SQL query:', sqlQuery);
       console.log('With parameters:', sqlParams);
 
       const result = await this.pool.query(sqlQuery, sqlParams);
-      console.log(`AI search returned ${result.rows.length} matching recipes`);
 
       // Post-process results to filter out any remaining recipes that mention excluded ingredients
       let filteredResults = result.rows;
@@ -446,6 +532,35 @@ export class RecipeSearchService {
 
     const sqlParams: any[] = [];
     let paramIndex = 1;
+
+    // Add cuisine filter based on analysis - this is important for Jewish cuisine queries
+    if (aiAnalysis.cuisines && aiAnalysis.cuisines.length > 0) {
+      console.log(`Filtering fallback search by cuisines: ${aiAnalysis.cuisines.join(', ')}`);
+      const cuisineConditions: string[] = [];
+      
+      for (const cuisine of aiAnalysis.cuisines) {
+        cuisineConditions.push(`r.cuisine ILIKE $${paramIndex}`);
+        sqlParams.push(`%${cuisine}%`);
+        paramIndex++;
+      }
+      
+      if (cuisineConditions.length > 0) {
+        sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
+      }
+    }
+
+    // Also check if query explicitly mentions Jewish food
+    if (query.toLowerCase().includes('jewish food') || 
+        query.toLowerCase().includes('jewish recipe') || 
+        query.toLowerCase().includes('jewish cuisine')) {
+      // If we haven't already added Jewish cuisine condition
+      if (!aiAnalysis.cuisines.includes('Jewish')) {
+        sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
+        sqlParams.push('%Jewish%');
+        paramIndex++;
+        console.log('Added explicit Jewish cuisine filter based on query text');
+      }
+    }
 
     // Prioritize mainDish if specified
     if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
@@ -1488,11 +1603,14 @@ export class RecipeSearchService {
         }
       }
     }
+
+    // Refine fallback analysis to focus on user-specified cuisine
+    const refinedCuisines = cuisines.filter(cuisine => cuisine === 'Jewish');
     
     // Create basic analysis object
     const result = {
       mainDish: mainDish,
-      cuisines: cuisines,
+      cuisines: refinedCuisines,
       includeIngredients: includeIngredients,
       excludeIngredients: excludeIngredients,
       dietaryPreferences: dietaryPreferences,
