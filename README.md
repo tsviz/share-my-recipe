@@ -24,6 +24,7 @@ Our AI-powered search takes recipe discovery to the next level:
 This feature ensures that you always find the perfect recipe for any occasion, making cooking more enjoyable and stress-free.
 
 ![Recipes Page](docs/recipes-page-screenshot.png)
+![Recipes Page](docs/recipes-page-screenshot2.png)
 
 ## 🌟 Community-Driven Portal
 
