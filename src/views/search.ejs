@@ -66,14 +66,60 @@
       padding-bottom: 0.5rem;
       margin-bottom: 1rem;
     }
+
+    /* Voice search button styles */
+    .search-container {
+      position: relative;
+    }
+    
+    .voice-search-btn {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      background: none;
+      border: none;
+      cursor: pointer;
+      font-size: 1.2rem;
+      color: #6c757d;
+      transition: color 0.2s;
+    }
+    
+    .voice-search-btn:hover {
+      color: #ff8c00;
+    }
+    
+    .voice-search-btn:focus {
+      outline: none;
+    }
+    
+    .voice-search-btn.listening {
+      color: #dc3545;
+      animation: pulse 1.5s infinite;
+    }
+
+    /* Timer indicator styles */
+    .timer-indicator {
+      position: absolute;
+      right: 45px;
+      top: 50%;
+      transform: translateY(-50%);
+      font-size: 0.9rem;
+      color: #28a745;
+      display: none;
+    }
 </style>
 
 <div class="container mt-4">
   <h1><%= title %></h1>
   
-  <form method="POST" action="/recipes/search" class="mb-4">
-    <div class="form-group">
+  <form method="POST" action="/recipes/search" class="mb-4" id="searchForm">
+    <div class="form-group search-container">
       <input type="text" class="form-control" id="about" name="about" placeholder="What are you looking for? (e.g. vegetarian pasta without tomatoes)" value="<%= locals.about || '' %>" autocomplete="off" />
+      <span class="timer-indicator" id="timerIndicator">5s</span>
+      <button type="button" id="voiceSearchBtn" class="voice-search-btn" title="Search by voice">
+        <i class="bi bi-mic-fill"></i>
+      </button>
     </div>
     <button type="submit" class="btn btn-primary">Get Recommendations</button>
   </form>
@@ -174,7 +220,7 @@
 
 <script>
     document.addEventListener('DOMContentLoaded', function() {
-      const form = document.querySelector('form');
+      const form = document.getElementById('searchForm');
       const loadingOverlay = document.createElement('div');
       loadingOverlay.className = 'loading-overlay';
       loadingOverlay.innerHTML = `
@@ -188,6 +234,130 @@
       form.addEventListener('submit', function() {
         loadingOverlay.classList.add('active');
       });
+      
+      // Voice search functionality
+      const voiceSearchBtn = document.getElementById('voiceSearchBtn');
+      const searchInput = document.getElementById('about');
+      const timerIndicator = document.getElementById('timerIndicator');
+      let autoSubmitTimer = null;
+      let secondsLeft = 5;
+      
+      // Function to clear the auto-submit timer
+      const clearAutoSubmitTimer = () => {
+        if (autoSubmitTimer) {
+          clearInterval(autoSubmitTimer);
+          autoSubmitTimer = null;
+          timerIndicator.style.display = 'none';
+          secondsLeft = 5;
+        }
+      };
+      
+      // Function to submit the form programmatically
+      const submitSearchForm = () => {
+        console.log("Auto-submitting form...");
+        clearAutoSubmitTimer();
+        loadingOverlay.classList.add('active'); // Show loading overlay
+        
+        // Use a small timeout to ensure the UI updates before submission
+        setTimeout(() => {
+          try {
+            // Submit the form using click() on the submit button
+            document.querySelector('#searchForm button[type="submit"]').click();
+          } catch (err) {
+            console.error("Error auto-submitting form:", err);
+            
+            // Fallback submission method
+            try {
+              form.submit();
+            } catch (submitError) {
+              console.error("Form submit error:", submitError);
+              
+              // Final fallback - navigate directly
+              if (searchInput.value.trim() !== '') {
+                window.location.href = `/recipes/search?about=${encodeURIComponent(searchInput.value)}`;
+              }
+            }
+          }
+        }, 100);
+      };
+      
+      // Set up event listeners to cancel the timer on user interaction
+      searchInput.addEventListener('input', clearAutoSubmitTimer);
+      searchInput.addEventListener('click', clearAutoSubmitTimer);
+      searchInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+          clearAutoSubmitTimer();
+        }
+      });
+      
+      // Check if browser supports speech recognition
+      if ('webkitSpeechRecognition' in window || 'SpeechRecognition' in window) {
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        const recognition = new SpeechRecognition();
+        
+        recognition.continuous = false;
+        recognition.interimResults = false;
+        recognition.lang = 'en-US';
+        
+        // Initialize voice search button
+        voiceSearchBtn.addEventListener('click', () => {
+          if (voiceSearchBtn.classList.contains('listening')) {
+            recognition.stop();
+            clearAutoSubmitTimer();
+          } else {
+            searchInput.value = '';
+            recognition.start();
+            voiceSearchBtn.classList.add('listening');
+            clearAutoSubmitTimer();
+          }
+        });
+        
+        // Process speech recognition results
+        recognition.onresult = (event) => {
+          const transcript = event.results[0][0].transcript;
+          searchInput.value = transcript;
+          
+          // Focus input to allow user to edit if needed
+          searchInput.focus();
+          
+          // Start the auto-submit timer
+          secondsLeft = 5;
+          timerIndicator.textContent = secondsLeft + 's';
+          timerIndicator.style.display = 'inline';
+          
+          autoSubmitTimer = setInterval(() => {
+            secondsLeft--;
+            timerIndicator.textContent = secondsLeft + 's';
+            
+            if (secondsLeft <= 0) {
+              submitSearchForm(); // Use our robust submission function
+            }
+          }, 1000);
+        };
+        
+        // Handle recognition end
+        recognition.onend = () => {
+          voiceSearchBtn.classList.remove('listening');
+        };
+        
+        // Handle errors
+        recognition.onerror = (event) => {
+          voiceSearchBtn.classList.remove('listening');
+          clearAutoSubmitTimer();
+          
+          if (event.error === 'no-speech') {
+            alert('No speech detected. Please try again.');
+          } else if (event.error === 'not-allowed') {
+            alert('Microphone permission denied. Please enable it to use voice search.');
+          } else {
+            console.error('Speech recognition error:', event.error);
+          }
+        };
+      } else {
+        // Hide button if speech recognition is not supported
+        voiceSearchBtn.style.display = 'none';
+        console.warn('Speech recognition not supported in this browser.');
+      }
     });
 </script>
 

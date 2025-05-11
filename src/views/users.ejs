@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %> - Recipe Sharing Platform</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .container {
+            padding-top: 2rem;
+            padding-bottom: 2rem;
+        }
+        .card {
+            border-radius: 1rem;
+            overflow: hidden;
+            transition: transform 0.3s;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            height: 100%;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+        }
+        .user-img {
+            height: 150px;
+            width: 150px;
+            border-radius: 50%;
+            object-fit: cover;
+            margin: 1rem auto;
+            border: 3px solid #fff;
+            box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+            background-color: #f8f9fa;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .btn-main {
+            background: linear-gradient(90deg, #ffb347 0%, #ffcc33 100%);
+            color: #fff;
+            border: none;
+            box-shadow: 0 2px 8px rgba(255, 140, 0, 0.15);
+        }
+        .btn-main:hover {
+            background: linear-gradient(90deg, #ffcc33 0%, #ffb347 100%);
+            color: #fff;
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/header') %>
+    
+    <div class="container">
+        <h1 class="mb-4 text-center">All Users</h1>
+        
+        <% if(messages.error) { %>
+            <div class="alert alert-danger">
+                <%= messages.error %>
+            </div>
+        <% } %>
+        
+        <div class="row row-cols-1 row-cols-md-3 row-cols-lg-4 g-4">
+            <% users.forEach(user => { %>
+                <div class="col">
+                    <div class="card h-100 text-center">
+                        <div class="user-img mx-auto">
+                            <% if (true) { // Always try to load image from endpoint %>
+                                <img src="/users/<%= user.id %>/profile-image" alt="<%= user.username %>" class="img-fluid w-100 h-100">
+                            <% } else { %>
+                                <i class="bi bi-person-fill" style="font-size: 3rem; color: #ccc;"></i>
+                            <% } %>
+                        </div>
+                        <div class="card-body">
+                            <h5 class="card-title"><%= user.username %></h5>
+                            <p class="card-text text-muted">
+                                <% if (user.bio) { %>
+                                    <%= user.bio.length > 50 ? user.bio.substring(0, 50) + '...' : user.bio %>
+                                <% } else { %>
+                                    No bio provided
+                                <% } %>
+                            </p>
+                            <p><small class="text-muted">Member since <%= new Date(user.created_at).toLocaleDateString() %></small></p>
+                            <a href="/users/<%= user.id %>" class="btn btn-main btn-sm mt-2">View Profile</a>
+                        </div>
+                    </div>
+                </div>
+            <% }) %>
+        </div>
+    </div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

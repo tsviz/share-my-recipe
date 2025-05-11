@@ -303,7 +303,7 @@ app.get('/users/:id', async (req, res) => {
       req.flash('error', 'User not found');
       return res.redirect('/');
     }
-    const user = userResult.rows[0];
+    const profileUser = userResult.rows[0]; // Renamed from 'user' to 'profileUser'
 
     // Fetch user's own recipes
     const recipesResult = await pool.query(`
@@ -328,8 +328,8 @@ app.get('/users/:id', async (req, res) => {
     const favoriteRecipes = favResult.rows;
 
     res.render('user-profile', {
-      title: `${user.username}'s Profile`,
-      user,
+      title: `${profileUser.username}'s Profile`,
+      profileUser, // Changed from 'user' to 'profileUser'
       recipes,
       favoriteRecipes
     });
@@ -380,6 +380,24 @@ app.post('/users/register', async (req, res) => {
   } catch (error) {
     console.error(error);
     res.status(500).json({ error: 'Failed to register user' });
+  }
+});
+
+// Add a route to display all users
+app.get('/users', async (req, res) => {
+  try {
+    const result = await pool.query(
+      'SELECT id, username, email, created_at, bio FROM users ORDER BY username'
+    );
+    
+    res.render('users', {
+      title: 'All Users',
+      users: result.rows
+    });
+  } catch (error) {
+    console.error('Error fetching users:', error);
+    req.flash('error', 'Failed to load users');
+    res.redirect('/');
   }
 });
 
@@ -509,7 +527,7 @@ app.post('/recipes/search', async (req, res) => {
     if (searchResults.length > 0 && searchResults[0].ai_analysis) {
       aiExplanation = searchResults[0].ai_analysis;
       // Remove the ai_analysis field from results to avoid confusion in the view
-      searchResults.forEach(recipe => delete recipe.ai_analysis);
+      searchResults.forEach((recipe: { ai_analysis?: string }) => delete recipe.ai_analysis);
     }
 
     console.log(`AI search returned ${searchResults.length} matching recipes`);
@@ -530,7 +548,7 @@ app.post('/recipes/search', async (req, res) => {
 
   // Final check: log all recommendations
   console.log("=== FINAL RECOMMENDATIONS ===");
-  recommendations.forEach(recipe => {
+  recommendations.forEach((recipe: { title: string; description?: string }) => {
     console.log(`- ${recipe.title} (${recipe.description || 'No description'})`);
   });
 
