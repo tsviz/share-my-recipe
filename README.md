@@ -39,6 +39,8 @@ A vibrant, interactive web application for sharing, discovering, and managing re
 
 Share My Recipe is more than just a recipe app—it's a community-driven platform where users can share their culinary creations, discover new recipes, and connect with fellow food enthusiasts. Whether you're a seasoned chef or a home cook, this portal is designed to inspire and bring people together through the love of food.
 
+![Community Page](docs/community-page-screenshot.png)
+
 - **Collaborative Recipe Sharing**: Share your favorite recipes with the community.
 - **Discover Hidden Gems**: Explore unique recipes from users around the world.
 - **Engage with Others**: Comment on and favorite recipes to show appreciation.
