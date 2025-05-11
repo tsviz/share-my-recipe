@@ -417,4 +417,6 @@
     </changeSet>
 
     <include file="add-popularity-column.sql" relativeToChangelogFile="true"/>
+    <include  file="insert_profile_images.sql" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>

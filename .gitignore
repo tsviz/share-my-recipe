@@ -32,3 +32,5 @@ coverage/
 
 # ignore generate-hashes.js
 generate-hashes.js
+
+helper_script*
