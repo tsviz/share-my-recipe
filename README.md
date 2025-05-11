@@ -4,8 +4,6 @@ A vibrant, interactive web application for sharing, discovering, and managing re
 
 ![Landing Page](docs/landing-page-screenshot.png)
 
-![Recipes Page](docs/recipes-page-screenshot.png)
-
 ## ✨ Key Features
 
 ### Recipe Management
@@ -14,12 +12,28 @@ A vibrant, interactive web application for sharing, discovering, and managing re
 - Step-by-step cooking instructions
 - User-friendly recipe editing interface
 
-### AI-Powered Search
-- Natural language recipe search using LLMs
-- Understands dietary preferences, cuisines, ingredients, and cooking methods
-- Intelligent cuisine detection and recommendation
-- Smart handling of ingredient exclusions and inclusions
-- Fallback mechanisms for when AI is unavailable
+## 🤖 Powerful AI Search Recommendations
+
+Our AI-powered search takes recipe discovery to the next level:
+
+- **Personalized Recommendations**: Get recipe suggestions tailored to your preferences.
+- **Natural Language Understanding**: Search using phrases like "quick vegan dinner" or "gluten-free desserts."
+- **Smart Ingredient Handling**: Include or exclude specific ingredients effortlessly.
+- **Fallback Mechanisms**: Enjoy reliable search results even when AI is unavailable.
+
+This feature ensures that you always find the perfect recipe for any occasion, making cooking more enjoyable and stress-free.
+
+![Recipes Page](docs/recipes-page-screenshot.png)
+
+## 🌟 Community-Driven Portal
+
+Share My Recipe is more than just a recipe app—it's a community-driven platform where users can share their culinary creations, discover new recipes, and connect with fellow food enthusiasts. Whether you're a seasoned chef or a home cook, this portal is designed to inspire and bring people together through the love of food.
+
+![Community Page](docs/community-page-screenshot.png)
+
+- **Collaborative Recipe Sharing**: Share your favorite recipes with the community.
+- **Discover Hidden Gems**: Explore unique recipes from users around the world.
+- **Engage with Others**: Comment on and favorite recipes to show appreciation.
 
 ### User Experience
 - User authentication and profile management
@@ -35,16 +49,6 @@ A vibrant, interactive web application for sharing, discovering, and managing re
 - Ingredient glossary and term expansion
 - Dietary preference recognition (vegetarian, kosher, gluten-free, etc.)
 
-## 🌟 Community-Driven Portal
-
-Share My Recipe is more than just a recipe app—it's a community-driven platform where users can share their culinary creations, discover new recipes, and connect with fellow food enthusiasts. Whether you're a seasoned chef or a home cook, this portal is designed to inspire and bring people together through the love of food.
-
-![Community Page](docs/community-page-screenshot.png)
-
-- **Collaborative Recipe Sharing**: Share your favorite recipes with the community.
-- **Discover Hidden Gems**: Explore unique recipes from users around the world.
-- **Engage with Others**: Comment on and favorite recipes to show appreciation.
-
 ## 🛠️ Technology Stack
 
 - **Backend**: Node.js with TypeScript
@@ -53,17 +57,6 @@ Share My Recipe is more than just a recipe app—it's a community-driven platfor
 - **Authentication**: Passport.js
 - **AI Integration**: Local AI model support (Mistral, VLLM, Ollama)
 - **Containerization**: Docker & Docker Compose
-
-## 🤖 Powerful AI Search Recommendations
-
-Our AI-powered search takes recipe discovery to the next level:
-
-- **Personalized Recommendations**: Get recipe suggestions tailored to your preferences.
-- **Natural Language Understanding**: Search using phrases like "quick vegan dinner" or "gluten-free desserts."
-- **Smart Ingredient Handling**: Include or exclude specific ingredients effortlessly.
-- **Fallback Mechanisms**: Enjoy reliable search results even when AI is unavailable.
-
-This feature ensures that you always find the perfect recipe for any occasion, making cooking more enjoyable and stress-free.
 
 ## 🚀 Getting Started
 
