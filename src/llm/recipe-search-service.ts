@@ -382,7 +382,27 @@ export class RecipeSearchService {
       'ethiopian': 'Ethiopian',
       'african': 'African',
       'brazilian': 'Brazilian',
-      'caribbean': 'Caribbean'
+      'caribbean': 'Caribbean',
+      'asian': 'Asian',
+      'european': 'European',
+      'latin american': 'Latin American',
+      'african american': 'African American',
+      'southern': 'Southern',
+      'cajun': 'Cajun',
+      'creole': 'Creole',
+      'tex-mex': 'Tex-Mex',
+      'fusion': 'Fusion',
+      'vegetarian': 'Vegetarian',
+      'vegan': 'Vegan',
+      'gluten free': 'Gluten Free',
+      'paleo': 'Paleo',
+      'keto': 'Keto',
+      'low carb': 'Low Carb',
+      'low fat': 'Low Fat',
+      'high protein': 'High Protein',
+      'diabetic': 'Diabetic',
+      'kosher': 'Kosher',
+      'halal': 'Halal'
     };
     
     // Check for direct mentions of cuisines
