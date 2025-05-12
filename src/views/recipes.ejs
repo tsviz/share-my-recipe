@@ -192,23 +192,8 @@
     </script>
 </head>
 <body>
-    <!-- Navigation Bar -->
-    <nav class="navbar navbar-expand-lg navbar-light bg-light shadow-sm mb-4">
-        <div class="container-fluid">
-            <a class="navbar-brand fw-bold" href="/">🍽️ Share My Recipe</a>
-            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav" aria-controls="navbarNav" aria-expanded="false" aria-label="Toggle navigation">
-                <span class="navbar-toggler-icon"></span>
-            </button>
-            <div class="collapse navbar-collapse" id="navbarNav">
-                <ul class="navbar-nav ms-auto">
-                    <li class="nav-item">
-                        <a class="nav-link btn btn-main px-3 py-1 fw-bold text-white" style="border-radius: 20px;" href="/">Home</a>
-                    </li>
-                    <!-- You can add more nav items here if needed -->
-                </ul>
-            </div>
-        </div>
-    </nav>
+    <%- include('partials/header') %>
+
     <div class="container mt-3">
         <h1 class="text-center mb-4"><%= title %></h1>
         <!-- Search and Filter Bar -->

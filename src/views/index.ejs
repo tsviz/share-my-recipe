@@ -117,9 +117,14 @@
                         <li class="nav-item">
                             <a class="nav-link" href="/recipes/search">Recipe Recommendations</a>
                         </li>
+                        <li class="nav-item">
+                            <a class="nav-link" href="/users">
+                                <i class="bi bi-people-fill me-1"></i>Community
+                            </a>
+                        </li>
                         <% if (isAuthenticated) { %>
                         <li class="nav-item">
-                            <a class="nav-link" href="/recipes/new">Create Recipe</a>
+                            <a class="nav-link" target="_blank" href="/recipes/new">Create Recipe</a>
                         </li>
                         <% } %>
                     </ul>
@@ -199,6 +204,16 @@
                 <% if (!isAuthenticated) { %>
                     <a href="/register" class="btn btn-secondary btn-lg">Join Our Community</a>
                 <% } %>
+            </div>
+        </div>
+    </div>
+
+    <div class="container mt-5">
+        <div class="home-container">
+            <h2 class="text-center mb-4">🌟 Join Our Community</h2>
+            <p class="lead text-center">Connect with fellow food enthusiasts, share your culinary creations, and discover hidden gems from around the world.</p>
+            <div class="text-center mt-4">
+                <a href="/community" class="btn btn-main btn-lg">Visit the Community Page</a>
             </div>
         </div>
     </div>
