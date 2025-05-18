@@ -39,9 +39,57 @@ export async function generateShoppingList(req: Request, res: Response) {
       
       console.log(`Found ${checkRecipes.rows[0].count} meal plan items`);
       
-      // Aggregate ingredients from all recipes in the meal plan
-      // Safe approach with LEFT JOINS to prevent missing records from breaking the query
-      // Modified to handle all types of quantity values and conversions safely
+      // Debug: Check if we can get basic meal plan items
+      const checkBasic = await pool.query(`
+        SELECT mpi.id, mpi.recipe_id FROM meal_plan_items mpi 
+        WHERE mpi.meal_plan_id = $1 LIMIT 5
+      `, [mealPlanId]);
+      console.log(`Debug - First few meal plan items:`, checkBasic.rows);
+      
+      // If we have meal plan items, check if they have recipe ingredients
+      if (checkBasic.rows.length > 0) {
+        const recipeId = checkBasic.rows[0].recipe_id;
+        const checkIngredients = await pool.query(`
+          SELECT ri.recipe_id, ri.ingredient_id, ri.quantity, i.name
+          FROM recipe_ingredients ri
+          JOIN ingredients i ON ri.ingredient_id = i.id
+          WHERE ri.recipe_id = $1
+          LIMIT 5
+        `, [recipeId]);
+        console.log(`Debug - Recipe ${recipeId} ingredients:`, checkIngredients.rows);
+      }
+      
+      // Get comprehensive sample data to help with debugging
+      try {
+        const sampleData = await pool.query(`
+          SELECT ri.quantity, i.name, ri.recipe_id
+          FROM meal_plan_items mpi
+          JOIN recipe_ingredients ri ON mpi.recipe_id = ri.recipe_id
+          JOIN ingredients i ON ri.ingredient_id = i.id
+          WHERE mpi.meal_plan_id = $1
+          ORDER BY ri.quantity IS NULL, random()
+          LIMIT 15
+        `, [mealPlanId]);
+        
+        if (sampleData.rows.length > 0) {
+          console.log('Sample ingredient entries:', sampleData.rows.map(r => ({
+            ingredient: r.name,
+            recipe_id: r.recipe_id,
+            quantity: r.quantity,
+            extracted_unit: r.quantity ? 
+              r.quantity.replace(/^[0-9\s\.\-/]+/, '').replace(/[^a-zA-Z\s]/g, '') : '',
+            simple_extract: r.quantity && typeof r.quantity === 'string' && r.quantity.match(/[a-zA-Z]+/) ? 
+              r.quantity.match(/[a-zA-Z]+/)[0] : ''
+          })));
+        } else {
+          console.log('No sample ingredient entries found');
+        }
+      } catch (sampleError: any) {
+        console.warn('Could not get sample data:', sampleError.message || sampleError);
+        // Continue with main query - this is just for debugging
+      }
+      
+      // Use an extremely simplified query to avoid regex issues
       const result = await pool.query(`
         SELECT 
           i.name, 
@@ -53,7 +101,15 @@ export async function generateShoppingList(req: Request, res: Response) {
                NULLIF(split_part(ri.quantity, '/', 2)::float, 0)) * mpi.servings
             ELSE mpi.servings::float
           END) AS total_quantity,
-          '' AS unit
+          -- Safer, simplest unit extraction with coalesce to ensure we always return a string
+          COALESCE(
+            CASE
+              WHEN ri.quantity IS NULL THEN ''
+              -- Remove numbers and common symbols for a basic unit extraction
+              ELSE TRIM(REGEXP_REPLACE(ri.quantity, '[0-9\\s\\.\\-/]+', '', 'g'))
+            END,
+            ''
+          ) AS unit
         FROM meal_plan_items mpi
         LEFT JOIN recipe_ingredients ri ON mpi.recipe_id = ri.recipe_id
         LEFT JOIN ingredients i ON ri.ingredient_id = i.id
@@ -64,12 +120,67 @@ export async function generateShoppingList(req: Request, res: Response) {
       `, [mealPlanId]);
       
       res.json(result.rows);
-    } catch (queryError) {
-      console.error('SQL Error in shopping list generation:', queryError);
-      throw queryError;
+    } catch (queryError: any) {
+      console.error('SQL Error in shopping list generation:', queryError.message || queryError);
+      console.error('Query error details:', queryError);
+      
+      // Try a simpler fallback with basic unit extraction
+      try {
+        console.log('Attempting fallback shopping list query with simplified approach...');
+        const fallbackResult = await pool.query(`
+          SELECT 
+            i.name, 
+            SUM(mpi.servings) AS total_quantity,
+            -- Ultimate fallback: just return the quantity string as is and handle in the frontend
+            COALESCE(ri.quantity, '') AS unit
+          FROM meal_plan_items mpi
+          LEFT JOIN recipe_ingredients ri ON mpi.recipe_id = ri.recipe_id
+          LEFT JOIN ingredients i ON ri.ingredient_id = i.id
+          WHERE mpi.meal_plan_id = $1
+            AND i.name IS NOT NULL
+          GROUP BY i.name
+          ORDER BY i.name
+        `, [mealPlanId]);
+        
+        console.log('Fallback query succeeded');
+        return res.json(fallbackResult.rows);
+      } catch (fallbackError: any) {
+        console.error('Fallback SQL Error:', fallbackError.message || fallbackError);
+        
+        // Try one last ultra-simple fallback with no regex at all
+        try {
+          console.log('Attempting ultra-simple fallback query with no regex...');
+          const simpleResult = await pool.query(`
+            SELECT 
+              i.name, 
+              SUM(mpi.servings) AS total_quantity,
+              '' AS unit
+            FROM meal_plan_items mpi
+            JOIN recipe_ingredients ri ON mpi.recipe_id = ri.recipe_id
+            JOIN ingredients i ON ri.ingredient_id = i.id
+            WHERE mpi.meal_plan_id = $1
+            GROUP BY i.name
+            ORDER BY i.name
+          `, [mealPlanId]);
+          
+          console.log('Ultra-simple fallback query succeeded');
+          return res.json(simpleResult.rows);
+        } catch (finalError: any) {
+          console.error('Final fallback failed:', finalError.message || finalError);
+          // Return the error with a clearer message rather than throwing
+          return res.status(500).json({ 
+            error: 'Failed to generate shopping list', 
+            details: finalError.message || 'Database query error'
+          });
+        }
+      }
     }
-  } catch (error) {
-    console.error('Error generating shopping list:', error);
-    res.status(500).json({ error: 'Failed to generate shopping list' });
+  } catch (error: any) {
+    console.error('Error generating shopping list:', error.message || error);
+    console.error('Error stack:', error.stack || 'No stack trace available');
+    res.status(500).json({ 
+      error: 'Failed to generate shopping list',
+      details: error.message || 'Unknown error occurred'
+    });
   }
 }

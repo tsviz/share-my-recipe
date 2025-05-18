@@ -3,7 +3,10 @@
 <div class="container mt-4">
   <div class="home-container">
     <h1 class="main-title text-center mb-4"><%= mealPlan.name %></h1>
-    <p class="text-center">From <b><%= mealPlan.start_date %></b> to <b><%= mealPlan.end_date %></b></p>
+    <p class="text-center">From <b><%= new Date(mealPlan.start_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %></b> to <b><%= new Date(mealPlan.end_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %></b></p>
+    <div class="badge bg-info text-white mb-2 p-2">
+      <%= Math.ceil((new Date(mealPlan.end_date) - new Date(mealPlan.start_date)) / (1000 * 60 * 60 * 24)) %> days of meal planning
+    </div>
     <div class="text-end mb-3">
       <a href="/meal-plans" class="btn btn-outline-secondary">Back to Meal Plans</a>
     </div>
@@ -15,7 +18,7 @@
     <h5>Add Recipe to Meal Plan</h5>
     <form id="addMealPlanItemForm" class="row g-2">
       <div class="col-md-3">
-        <input type="date" class="form-control" name="meal_date" required>
+        <input type="date" class="form-control" name="meal_date" required id="meal_date_input">
       </div>
       <div class="col-md-3">
         <select class="form-select" name="meal_time" required>
@@ -52,7 +55,8 @@
 // Initialize the recipes data as a global variable to avoid JSON parsing issues
 let recipesData;
 try {
-  recipesData = <%- JSON.stringify(recipes) %>;
+  // Using proper JSON parsing with the raw data from the server
+  recipesData = JSON.parse('<%- JSON.stringify(recipes) %>'.replace(/&quot;/g, '"'));
   if (!Array.isArray(recipesData)) {
     console.error("Recipe data is not an array");
     recipesData = [];
@@ -63,6 +67,50 @@ try {
 }
 
 const mealPlanId = '<%= mealPlan.id %>';
+
+// Format date to be more user friendly
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  
+  // Check if the date is today or tomorrow
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  } else if (date.toDateString() === tomorrow.toDateString()) {
+    return 'Tomorrow';
+  }
+  
+  // For other dates, show weekday and formatted date
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    month: 'long', 
+    day: 'numeric'
+  });
+}
+
+// Format meal time with icons
+function formatMealTime(mealTime) {
+  let icon = '';
+  switch(mealTime) {
+    case 'breakfast':
+      icon = '<i class="bi bi-brightness-alt-high" title="Breakfast"></i>';
+      break;
+    case 'lunch':
+      icon = '<i class="bi bi-sun" title="Lunch"></i>';
+      break;
+    case 'dinner':
+      icon = '<i class="bi bi-moon-stars" title="Dinner"></i>';
+      break;
+    default:
+      icon = '<i class="bi bi-cup-hot" title="Snack"></i>';
+  }
+  // Capitalize the first letter of meal time
+  const formattedTime = mealTime.charAt(0).toUpperCase() + mealTime.slice(1);
+  return `${icon} ${formattedTime}`;
+}
+
 function loadMealPlanItems() {
   fetch(`/api/meal-plans/${mealPlanId}/items`, { credentials: 'same-origin' })
     .then(res => {
@@ -75,19 +123,55 @@ function loadMealPlanItems() {
         container.innerHTML = '<div class="alert alert-info">No meals planned yet.</div>';
         return;
       }
-      container.innerHTML = `<table class="table table-bordered">
-        <thead><tr><th>Date</th><th>Meal Time</th><th>Recipe</th><th>Servings</th><th></th></tr></thead>
-        <tbody>
-        ${items.map(item => `
-          <tr>
-            <td>${item.meal_date}</td>
-            <td>${item.meal_time.charAt(0).toUpperCase() + item.meal_time.slice(1)}</td>
-            <td>${getRecipeTitle(item.recipe_id)}</td>
-            <td>${item.servings}</td>
-            <td><button class="btn btn-danger btn-sm" onclick="deleteMealPlanItem('${item.id}')">Delete</button></td>
-          </tr>
-        `).join('')}
-        </tbody></table>`;
+      
+      // Group items by date
+      const groupedByDate = {};
+      items.forEach(item => {
+        if (!groupedByDate[item.meal_date]) {
+          groupedByDate[item.meal_date] = [];
+        }
+        groupedByDate[item.meal_date].push(item);
+      });
+      
+      // Sort dates
+      const sortedDates = Object.keys(groupedByDate).sort();
+      
+      // Generate HTML
+      let html = '';
+      sortedDates.forEach(date => {
+        // Add date header
+        html += `
+          <div class="card mb-3">
+            <div class="card-header bg-light">
+              <h5 class="mb-0">${formatDate(date)}</h5>
+            </div>
+            <div class="card-body p-0">
+              <table class="table table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Meal Time</th>
+                    <th>Recipe</th>
+                    <th>Servings</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                ${groupedByDate[date].map(item => `
+                  <tr>
+                    <td>${formatMealTime(item.meal_time)}</td>
+                    <td>${getRecipeTitle(item.recipe_id)}</td>
+                    <td>${item.servings} serving${item.servings > 1 ? 's' : ''}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteMealPlanItem('${item.id}')">Delete</button></td>
+                  </tr>
+                `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      });
+      
+      container.innerHTML = html;
     })
     .catch(err => {
       console.error("Error loading meal plan items:", err);
@@ -97,13 +181,17 @@ function loadMealPlanItems() {
 }
 function getRecipeTitle(recipeId) {
   try {
+    if (!Array.isArray(recipesData)) {
+      console.error("Recipe data is not properly initialized or not an array");
+      return `Recipe ${recipeId.substring(0, 8)}...`;
+    }
+    
     // Get recipes data that was pre-generated on server side
-    // Using a global variable set at the beginning of the script is safer than parsing
     const r = recipesData.find(r => r.id === recipeId);
-    return r ? r.title : recipeId;
+    return r ? r.title : `Recipe ${recipeId.substring(0, 8)}...`;
   } catch (e) {
     console.error("Error finding recipe:", e);
-    return recipeId;
+    return `Recipe ${recipeId.substring(0, 8)}...`;
   }
 }
 document.getElementById('addMealPlanItemForm').onsubmit = function(e) {
@@ -215,14 +303,95 @@ document.getElementById('generateShoppingListBtn').onclick = function() {
         return;
       }
       
-      // Format quantities to two decimal places when needed
+      // Format quantities to two decimal places when needed and standardize units
       const formattedItems = items.map(item => {
         const quantity = parseFloat(item.total_quantity);
         // Format to at most 2 decimal places, avoid trailing zeros
         const formattedQuantity = Number.isInteger(quantity) ? quantity : quantity.toFixed(2).replace(/\.?0+$/, '');
+        
+        // Standardize units by trimming whitespace and lowercasing
+        const unit = item.unit ? item.unit.trim().toLowerCase() : '';
+        
+        // Standardize common unit abbreviations
+        const standardizedUnit = (() => {
+          if (!unit) return '';
+          
+          // Map of common unit abbreviations to their standard forms
+          const unitMap = {
+            'tbsp': 'tbsp',
+            'tbs': 'tbsp',
+            't': 'tbsp',
+            'tb': 'tbsp',
+            'tablespoon': 'tbsp',
+            'tablespoons': 'tbsp',
+            'tsp': 'tsp',
+            't': 'tsp',
+            'teaspoon': 'tsp',
+            'teaspoons': 'tsp',
+            'cup': 'cup',
+            'cups': 'cup',
+            'c': 'cup',
+            'oz': 'oz',
+            'ounce': 'oz',
+            'ounces': 'oz',
+            'fl oz': 'fl oz',
+            'fluid ounce': 'fl oz',
+            'fluid ounces': 'fl oz',
+            'lb': 'lb',
+            'pound': 'lb',
+            'pounds': 'lb',
+            'g': 'g',
+            'gram': 'g',
+            'grams': 'g',
+            'mg': 'mg',
+            'milligram': 'mg',
+            'milligrams': 'mg',
+            'kg': 'kg',
+            'kilogram': 'kg',
+            'kilograms': 'kg',
+            'ml': 'ml',
+            'milliliter': 'ml',
+            'milliliters': 'ml',
+            'l': 'l',
+            'liter': 'l',
+            'liters': 'l',
+            'pt': 'pt',
+            'pint': 'pt',
+            'pints': 'pt',
+            'qt': 'qt',
+            'quart': 'qt',
+            'quarts': 'qt',
+            'gal': 'gal',
+            'gallon': 'gal',
+            'gallons': 'gal',
+            'pinch': 'pinch',
+            'dash': 'dash',
+            'handful': 'handful',
+            'bunch': 'bunch',
+            'bunches': 'bunch',
+            'slice': 'slice',
+            'slices': 'slice',
+            'piece': 'piece',
+            'pieces': 'piece',
+            'clove': 'clove',
+            'cloves': 'clove',
+            'head': 'head',
+            'heads': 'head',
+            'stalk': 'stalk',
+            'stalks': 'stalk',
+            'sprig': 'sprig',
+            'sprigs': 'sprig',
+            'can': 'can',
+            'cans': 'can'
+          };
+          
+          return unitMap[unit] || unit;
+        })();
+        
         return {
           ...item,
-          formatted_quantity: formattedQuantity
+          formatted_quantity: formattedQuantity,
+          unit: standardizedUnit
         };
       });
       
@@ -234,15 +403,24 @@ document.getElementById('generateShoppingListBtn').onclick = function() {
           </div>
           <div class="card-body" id="printableShoppingList">
             <table class="table table-striped">
-              <thead><tr><th>Ingredient</th><th>Quantity</th><th>Unit</th></tr></thead>
+              <thead><tr><th>Ingredient</th><th class="text-end">Amount</th></tr></thead>
               <tbody>
-              ${formattedItems.map(item => `
-                <tr>
-                  <td>${item.name}</td>
-                  <td>${item.formatted_quantity}</td>
-                  <td>${item.unit || ''}</td>
-                </tr>
-              `).join('')}
+              ${formattedItems.map(item => {
+                // Capitalize ingredient name for better presentation
+                const capitalizedName = item.name.charAt(0).toUpperCase() + item.name.slice(1);
+                
+                // Format the combined quantity and unit for better readability
+                const quantityDisplay = item.formatted_quantity;
+                const unitDisplay = item.unit ? item.unit : '';
+                const amountDisplay = unitDisplay ? `${quantityDisplay} ${unitDisplay}` : quantityDisplay;
+                
+                return `
+                  <tr>
+                    <td>${capitalizedName}</td>
+                    <td class="text-end">${amountDisplay}</td>
+                  </tr>
+                `;
+              }).join('')}
               </tbody>
             </table>
           </div>
@@ -251,7 +429,41 @@ document.getElementById('generateShoppingListBtn').onclick = function() {
     })
     .catch(err => {
       console.error("Error generating shopping list:", err);
-      container.innerHTML = `<div class="alert alert-danger">${err.message || 'Failed to generate shopping list. Please try again.'}</div>`;
+      
+      // Improved error handling
+      let errorMessage = err.message || 'Failed to generate shopping list. Please try again.';
+      
+      if (err.response) {
+        // Try to get JSON error details if available
+        err.response.json()
+          .then(data => {
+            console.log('Error response data:', data);
+            if (data && data.error) {
+              let errorHtml = `<div class="alert alert-danger">
+                <p><strong>Error:</strong> ${data.error}</p>`;
+                
+              if (data.details) {
+                errorHtml += `<p><small>Details: ${data.details}</small></p>`;
+              }
+              
+              errorHtml += `</div>`;
+              container.innerHTML = errorHtml;
+            } else {
+              container.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
+            }
+          })
+          .catch(jsonErr => {
+            // If we can't parse JSON from the response
+            console.error("Could not parse error response:", jsonErr);
+            container.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
+          });
+      } else {
+        // No structured response available
+        container.innerHTML = `<div class="alert alert-danger">
+          <p>${errorMessage}</p>
+          <p><small>Try adding some recipes to your meal plan first.</small></p>
+        </div>`;
+      }
     })
     .finally(() => {
       // Always restore button state
@@ -264,13 +476,39 @@ document.getElementById('generateShoppingListBtn').onclick = function() {
 function printShoppingList() {
   const printContents = document.getElementById('printableShoppingList').innerHTML;
   const originalContents = document.body.innerHTML;
+  const mealPlanName = '<%= mealPlan.name %>';
+  const startDate = '<%= new Date(mealPlan.start_date).toLocaleDateString() %>';
+  const endDate = '<%= new Date(mealPlan.end_date).toLocaleDateString() %>';
   
   document.body.innerHTML = `
-    <div style="padding: 20px;">
-      <h1 style="text-align: center; margin-bottom: 20px;">Shopping List for ${mealPlanId}</h1>
-      ${printContents}
+    <div style="padding: 20px; font-family: Arial, sans-serif;">
+      <h1 style="text-align: center; margin-bottom: 10px;">Shopping List for ${mealPlanName}</h1>
+      <p style="text-align: center; margin-bottom: 20px; color: #666;">
+        From ${startDate} to ${endDate}
+      </p>
+      <div style="max-width: 800px; margin: 0 auto;">
+        ${printContents}
+      </div>
+      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #888;">
+        Generated from Share My Recipe on ${new Date().toLocaleDateString()}
+      </div>
     </div>
   `;
+  
+  // Add print-specific styles
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @media print {
+      table { width: 100%; border-collapse: collapse; }
+      th { padding: 8px; border-bottom: 2px solid #ddd; }
+      th:first-child { text-align: left; }
+      th:last-child { text-align: right; }
+      td { padding: 8px; border-bottom: 1px solid #eee; }
+      td:last-child { text-align: right; }
+      tr:nth-child(even) { background-color: #f9f9f9; }
+    }
+  `;
+  document.head.appendChild(style);
   
   window.print();
   document.body.innerHTML = originalContents;
@@ -288,6 +526,16 @@ const generateShoppingListHandler = document.getElementById('generateShoppingLis
 // Load meal plan items when the page loads
 document.addEventListener('DOMContentLoaded', function() {
   loadMealPlanItems();
+  
+  // Set today's date as the default date in the form
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateInput = document.getElementById('meal_date_input');
+  if (dateInput) {
+    dateInput.value = `${year}-${month}-${day}`;
+  }
 });
 </script>
 <%- include('partials/footer') %>

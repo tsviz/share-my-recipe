@@ -112,22 +112,20 @@
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav me-auto">
                         <li class="nav-item">
-                            <a class="nav-link" href="/recipes">Browse Recipes</a>
+                            <a class="nav-link" href="/recipes"><i class="bi bi-book"></i> Browse Recipes</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/recipes/search">Recipe Recommendations</a>
+                            <a class="nav-link" href="/meal-plans"><i class="bi bi-calendar-week"></i> Meal Planning</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/users">
-                                <i class="bi bi-people-fill me-1"></i>Community
-                            </a>
+                            <a class="nav-link" href="/recipes/search"><i class="bi bi-search"></i> Recipe Recommendations</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/meal-plans">Meal Planning</a>
+                            <a class="nav-link" href="/users"><i class="bi bi-people"></i> Community</a>
                         </li>
                         <% if (isAuthenticated) { %>
                         <li class="nav-item">
-                            <a class="nav-link" target="_blank" href="/recipes/new">Create Recipe</a>
+                            <a class="nav-link" href="/recipes/new" target="_blank" rel="noopener noreferrer"><i class="bi bi-plus-circle"></i> Create Recipe</a>
                         </li>
                         <% } %>
                     </ul>
