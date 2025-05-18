@@ -134,7 +134,7 @@
                     <div class="d-flex">
                         <% if (isAuthenticated) { %>
                             <div class="dropdown">
-                                <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false">
+                                <button class="btn btn-outline-secondary dropdown-toggle" type="button" id="dropdownMenuButton" data-bs-toggle="dropdown" aria-expanded="false" style="position: relative; z-index: 1050;">
                                     <% if (user.profile_image) { %>
                                         <img src="/users/<%= user.id %>/profile-image" alt="Profile" class="user-avatar">
                                     <% } else { %>
@@ -142,7 +142,7 @@
                                     <% } %>
                                     <%= user.username %>
                                 </button>
-                                <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton">
+                                <ul class="dropdown-menu dropdown-menu-end" style="z-index: 1051;" aria-labelledby="dropdownMenuButton">
                                     <li><a class="dropdown-item" href="/dashboard" data-bs-toggle="tooltip" data-bs-placement="left" title="View your activity summary and recent recipes">My Dashboard</a></li>
                                     <li><a class="dropdown-item" href="/profile" data-bs-toggle="tooltip" data-bs-placement="left" title="See your public profile, favorite recipes and statistics">My Profile</a></li>
                                     <li><a class="dropdown-item" href="/profile/edit" data-bs-toggle="tooltip" data-bs-placement="left" title="Update your personal information, profile picture and preferences">Edit Profile</a></li>
@@ -175,9 +175,10 @@
     <!-- Bootstrap Bundle with Popper -->
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     
-    <!-- Initialize tooltips -->
+    <!-- Initialize tooltips and dropdowns -->
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+            // Initialize tooltips
             var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
             var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
                 return new bootstrap.Tooltip(tooltipTriggerEl, {
@@ -185,6 +186,27 @@
                     delay: { "show": 300, "hide": 100 }
                 });
             });
+            
+            // Ensure dropdowns work properly
+            const dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
+            dropdownElementList.map(function (dropdownToggleEl) {
+                return new bootstrap.Dropdown(dropdownToggleEl, {
+                    boundary: document.querySelector('body')
+                });
+            });
+            
+            // Add specific event listener for user profile dropdown
+            const userDropdown = document.getElementById('dropdownMenuButton');
+            if (userDropdown) {
+                userDropdown.addEventListener('click', function() {
+                    const dropdownInstance = bootstrap.Dropdown.getInstance(userDropdown);
+                    if (dropdownInstance) {
+                        dropdownInstance.toggle();
+                    } else {
+                        new bootstrap.Dropdown(userDropdown).toggle();
+                    }
+                });
+            }
         });
     </script>
 </body>
