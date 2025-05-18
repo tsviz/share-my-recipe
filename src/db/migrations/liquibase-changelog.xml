@@ -419,4 +419,7 @@
     <include file="add-popularity-column.sql" relativeToChangelogFile="true"/>
     <include  file="insert_profile_images.sql" relativeToChangelogFile="true"/>
 
+    <changeSet id="2025-05-17-meal-planning" author="tsvi">
+        <sqlFile path="src/db/migrations/create-meal-planning-tables.sql" relativeToChangelogFile="false"/>
+    </changeSet>
 </databaseChangeLog>

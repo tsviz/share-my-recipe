@@ -19,6 +19,9 @@ import { RecipeSearchService } from './llm/recipe-search-service';
 // Import authentication modules
 import configurePassport from './auth/passport-config';
 import { registerUser, updateUserProfile, changeUserPassword, isAuthenticated, isNotAuthenticated } from './auth/auth-utils';
+import { mealPlanRoutes } from './routes/mealPlanRoutes';
+import { mealPlanItemRoutes } from './routes/mealPlanItemRoutes';
+import { shoppingListRoutes } from './routes/shoppingListRoutes';
 
 const app = express();
 const port = 3000;
@@ -968,6 +971,44 @@ app.get('/favorites', isAuthenticated, async (req, res) => {
     console.error("Error fetching favorites:", error);
     req.flash('error', 'Failed to load favorite recipes');
     res.redirect('/dashboard');
+  }
+});
+
+// API routes for meal plans
+app.use('/api/meal-plans', mealPlanRoutes(pool));
+
+// API routes for meal plan items (nested under meal plans)
+app.use('/api/meal-plans/:mealPlanId/items', (req, res, next) => mealPlanItemRoutes(pool)(req, res, next));
+
+// API route for generating shopping list for a meal plan
+app.use('/api/meal-plans/:mealPlanId/shopping-list', (req, res, next) => shoppingListRoutes(pool)(req, res, next));
+
+// Route to render the "Meal Plans" page
+app.get('/meal-plans', isAuthenticated, (req, res) => {
+  res.render('meal-plans', { title: 'My Meal Plans', user: req.user });
+});
+
+// Route to render a single meal plan and its items
+app.get('/meal-plans/:id', isAuthenticated, async (req, res) => {
+  const mealPlanId = req.params.id;
+  const userId = (req.user as any).id;
+  try {
+    // Get the meal plan
+    const planResult = await pool.query('SELECT * FROM meal_plans WHERE id = $1 AND user_id = $2', [mealPlanId, userId]);
+    if (planResult.rows.length === 0) {
+      req.flash('error', 'Meal plan not found');
+      return res.redirect('/meal-plans');
+    }
+    // Get all user's recipes for selection
+    const recipesResult = await pool.query('SELECT id, title FROM recipes WHERE user_id = $1', [userId]);
+    res.render('meal-plan-detail', {
+      title: planResult.rows[0].name,
+      mealPlan: planResult.rows[0],
+      recipes: recipesResult.rows
+    });
+  } catch (error) {
+    req.flash('error', 'Failed to load meal plan');
+    res.redirect('/meal-plans');
   }
 });
 
