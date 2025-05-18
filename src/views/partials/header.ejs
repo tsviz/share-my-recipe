@@ -114,20 +114,20 @@
                 <div class="collapse navbar-collapse" id="navbarNav">
                     <ul class="navbar-nav me-auto">
                         <li class="nav-item">
-                            <a class="nav-link" href="/recipes"><i class="bi bi-book"></i> Browse Recipes</a>
+                            <a class="nav-link" href="/recipes" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Explore our collection of delicious recipes shared by the community"><i class="bi bi-book"></i> Browse Recipes</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/meal-plans"><i class="bi bi-calendar-week"></i> Meal Planning</a>
+                            <a class="nav-link" href="/meal-plans" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Create weekly meal plans and generate shopping lists for your recipes"><i class="bi bi-calendar-week"></i> Meal Planning</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/recipes/search"><i class="bi bi-search"></i> Recipe Recommendations</a>
+                            <a class="nav-link" href="/recipes/search" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Get personalized recipe recommendations based on your preferences and ingredients"><i class="bi bi-search"></i> Recipe Recommendations</a>
                         </li>
                         <li class="nav-item">
-                            <a class="nav-link" href="/users"><i class="bi bi-people"></i> Community</a>
+                            <a class="nav-link" href="/users" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Connect with other cooking enthusiasts and discover popular chefs"><i class="bi bi-people"></i> Community</a>
                         </li>
                         <% if (isAuthenticated) { %>
                         <li class="nav-item">
-                            <a class="nav-link" href="/recipes/new" target="_blank" rel="noopener noreferrer"><i class="bi bi-plus-circle"></i> Create Recipe</a>
+                            <a class="nav-link" href="/recipes/new" target="_blank" rel="noopener noreferrer" data-bs-toggle="tooltip" data-bs-placement="bottom" title="Share your own recipes with detailed ingredients and instructions"><i class="bi bi-plus-circle"></i> Create Recipe</a>
                         </li>
                         <% } %>
                     </ul>
@@ -143,11 +143,11 @@
                                     <%= user.username %>
                                 </button>
                                 <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="dropdownMenuButton">
-                                    <li><a class="dropdown-item" href="/dashboard">My Dashboard</a></li>
-                                    <li><a class="dropdown-item" href="/profile">My Profile</a></li>
-                                    <li><a class="dropdown-item" href="/profile/edit">Edit Profile</a></li>
+                                    <li><a class="dropdown-item" href="/dashboard" data-bs-toggle="tooltip" data-bs-placement="left" title="View your activity summary and recent recipes">My Dashboard</a></li>
+                                    <li><a class="dropdown-item" href="/profile" data-bs-toggle="tooltip" data-bs-placement="left" title="See your public profile, favorite recipes and statistics">My Profile</a></li>
+                                    <li><a class="dropdown-item" href="/profile/edit" data-bs-toggle="tooltip" data-bs-placement="left" title="Update your personal information, profile picture and preferences">Edit Profile</a></li>
                                     <li><hr class="dropdown-divider"></li>
-                                    <li><a class="dropdown-item" href="/logout">Logout</a></li>
+                                    <li><a class="dropdown-item" href="/logout" data-bs-toggle="tooltip" data-bs-placement="left" title="Sign out of your account">Logout</a></li>
                                 </ul>
                             </div>
                         <% } else { %>
@@ -171,5 +171,21 @@
             </div>
         <% } %>
     </div>
+
+    <!-- Bootstrap Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    <!-- Initialize tooltips -->
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+            var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+                return new bootstrap.Tooltip(tooltipTriggerEl, {
+                    container: 'body',
+                    delay: { "show": 300, "hide": 100 }
+                });
+            });
+        });
+    </script>
 </body>
 </html>

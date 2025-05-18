@@ -309,8 +309,13 @@ document.getElementById('generateShoppingListBtn').onclick = function() {
         // Format to at most 2 decimal places, avoid trailing zeros
         const formattedQuantity = Number.isInteger(quantity) ? quantity : quantity.toFixed(2).replace(/\.?0+$/, '');
         
+        // For units, we need to handle the possibility of commas from string_agg in SQL
+        const rawUnit = item.unit || '';
+        // Take the first value if we have a comma-separated list from string_agg
+        const firstUnit = rawUnit.split(',')[0].trim().toLowerCase();
+        
         // Standardize units by trimming whitespace and lowercasing
-        const unit = item.unit ? item.unit.trim().toLowerCase() : '';
+        const unit = firstUnit || '';
         
         // Standardize common unit abbreviations
         const standardizedUnit = (() => {
