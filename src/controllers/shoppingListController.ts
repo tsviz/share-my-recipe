@@ -89,7 +89,7 @@ export async function generateShoppingList(req: Request, res: Response) {
         // Continue with main query - this is just for debugging
       }
       
-      // Use an extremely simplified query to avoid regex issues
+      // Use a corrected query with proper aggregation for unit extraction
       const result = await pool.query(`
         SELECT 
           i.name, 
@@ -101,13 +101,17 @@ export async function generateShoppingList(req: Request, res: Response) {
                NULLIF(split_part(ri.quantity, '/', 2)::float, 0)) * mpi.servings
             ELSE mpi.servings::float
           END) AS total_quantity,
-          -- Safer, simplest unit extraction with coalesce to ensure we always return a string
+          -- Extract unit using string_agg to aggregate units from multiple matching ingredients
+          -- We take the first non-empty unit we find for each ingredient group
           COALESCE(
-            CASE
-              WHEN ri.quantity IS NULL THEN ''
-              -- Remove numbers and common symbols for a basic unit extraction
-              ELSE TRIM(REGEXP_REPLACE(ri.quantity, '[0-9\\s\\.\\-/]+', '', 'g'))
-            END,
+            string_agg(
+              CASE
+                WHEN ri.quantity IS NULL THEN NULL
+                WHEN ri.quantity ~ '[a-zA-Z]' THEN TRIM(REGEXP_REPLACE(ri.quantity, '^[0-9\\s\\.\\-/]+', '', 'g'))
+                ELSE NULL
+              END,
+              ',' ORDER BY ri.quantity IS NOT NULL DESC, char_length(ri.quantity) DESC
+            ),
             ''
           ) AS unit
         FROM meal_plan_items mpi
@@ -131,8 +135,15 @@ export async function generateShoppingList(req: Request, res: Response) {
           SELECT 
             i.name, 
             SUM(mpi.servings) AS total_quantity,
-            -- Ultimate fallback: just return the quantity string as is and handle in the frontend
-            COALESCE(ri.quantity, '') AS unit
+            -- Use string_agg to properly handle quantity in GROUP BY context
+            -- This will take the first non-empty quantity string for each ingredient group
+            COALESCE(
+              string_agg(
+                CASE WHEN ri.quantity IS NOT NULL THEN ri.quantity ELSE NULL END,
+                ',' ORDER BY ri.quantity IS NOT NULL DESC, char_length(ri.quantity) DESC
+              ),
+              ''
+            ) AS unit
           FROM meal_plan_items mpi
           LEFT JOIN recipe_ingredients ri ON mpi.recipe_id = ri.recipe_id
           LEFT JOIN ingredients i ON ri.ingredient_id = i.id
