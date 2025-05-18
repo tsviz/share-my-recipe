@@ -1,0 +1,293 @@
+<% /* src/views/meal-plan-detail.ejs - Meal Plan Detail UI */ %>
+<%- include('partials/header', { title: mealPlan.name }) %>
+<div class="container mt-4">
+  <div class="home-container">
+    <h1 class="main-title text-center mb-4"><%= mealPlan.name %></h1>
+    <p class="text-center">From <b><%= mealPlan.start_date %></b> to <b><%= mealPlan.end_date %></b></p>
+    <div class="text-end mb-3">
+      <a href="/meal-plans" class="btn btn-outline-secondary">Back to Meal Plans</a>
+    </div>
+    <h4>Planned Meals</h4>
+    <div id="mealPlanItems">
+      <!-- Items will be loaded here by client-side JS -->
+    </div>
+    <hr>
+    <h5>Add Recipe to Meal Plan</h5>
+    <form id="addMealPlanItemForm" class="row g-2">
+      <div class="col-md-3">
+        <input type="date" class="form-control" name="meal_date" required>
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="meal_time" required>
+          <option value="">Meal Time</option>
+          <option value="breakfast">Breakfast</option>
+          <option value="lunch">Lunch</option>
+          <option value="dinner">Dinner</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <select class="form-select" name="recipe_id" required>
+          <option value="">Select Recipe</option>
+          <% recipes.forEach(function(recipe) { %>
+            <option value="<%= recipe.id %>"><%= recipe.title %></option>
+          <% }) %>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <input type="number" class="form-control" name="servings" min="1" value="1" required>
+      </div>
+      <div class="col-md-1">
+        <button type="submit" class="btn btn-main w-100">Add</button>
+      </div>
+    </form>
+    <hr>
+    <h5>Shopping List</h5>
+    <div class="mb-3">
+      <button class="btn btn-main" id="generateShoppingListBtn">Generate Shopping List</button>
+    </div>
+    <div id="shoppingListContainer"></div>
+  </div>
+</div>
+<script>
+// Initialize the recipes data as a global variable to avoid JSON parsing issues
+let recipesData;
+try {
+  recipesData = <%- JSON.stringify(recipes) %>;
+  if (!Array.isArray(recipesData)) {
+    console.error("Recipe data is not an array");
+    recipesData = [];
+  }
+} catch (e) {
+  console.error("Error parsing recipe data:", e);
+  recipesData = [];
+}
+
+const mealPlanId = '<%= mealPlan.id %>';
+function loadMealPlanItems() {
+  fetch(`/api/meal-plans/${mealPlanId}/items`, { credentials: 'same-origin' })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to fetch meal plan items');
+      return res.json();
+    })
+    .then(items => {
+      const container = document.getElementById('mealPlanItems');
+      if (!items.length) {
+        container.innerHTML = '<div class="alert alert-info">No meals planned yet.</div>';
+        return;
+      }
+      container.innerHTML = `<table class="table table-bordered">
+        <thead><tr><th>Date</th><th>Meal Time</th><th>Recipe</th><th>Servings</th><th></th></tr></thead>
+        <tbody>
+        ${items.map(item => `
+          <tr>
+            <td>${item.meal_date}</td>
+            <td>${item.meal_time.charAt(0).toUpperCase() + item.meal_time.slice(1)}</td>
+            <td>${getRecipeTitle(item.recipe_id)}</td>
+            <td>${item.servings}</td>
+            <td><button class="btn btn-danger btn-sm" onclick="deleteMealPlanItem('${item.id}')">Delete</button></td>
+          </tr>
+        `).join('')}
+        </tbody></table>`;
+    })
+    .catch(err => {
+      console.error("Error loading meal plan items:", err);
+      document.getElementById('mealPlanItems').innerHTML = 
+        '<div class="alert alert-danger">Failed to load meal plan items. Please try refreshing the page.</div>';
+    });
+}
+function getRecipeTitle(recipeId) {
+  try {
+    // Get recipes data that was pre-generated on server side
+    // Using a global variable set at the beginning of the script is safer than parsing
+    const r = recipesData.find(r => r.id === recipeId);
+    return r ? r.title : recipeId;
+  } catch (e) {
+    console.error("Error finding recipe:", e);
+    return recipeId;
+  }
+}
+document.getElementById('addMealPlanItemForm').onsubmit = function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData);
+  
+  // Validate form data
+  if (!data.meal_date) {
+    alert('Please select a date');
+    return;
+  }
+  if (!data.meal_time) {
+    alert('Please select a meal time');
+    return;
+  }
+  if (!data.recipe_id) {
+    alert('Please select a recipe');
+    return;
+  }
+  if (!data.servings || parseInt(data.servings) < 1) {
+    data.servings = 1; // Set default serving if invalid
+  }
+  
+  // Show loading state or disable form
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalBtnText = submitBtn.innerHTML;
+  submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
+  submitBtn.disabled = true;
+  
+  fetch(`/api/meal-plans/${mealPlanId}/items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(data)
+  })
+    .then(res => {
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          return res.json().then(errData => {
+            throw new Error(errData.error || 'Failed to add item');
+          });
+        } else {
+          throw new Error('Failed to add item');
+        }
+      }
+      return res.json();
+    })
+    .then(() => {
+      form.reset();
+      loadMealPlanItems();
+    })
+    .catch(err => {
+      console.error('Error adding meal plan item:', err);
+      alert(err.message);
+    })
+    .finally(() => {
+      // Restore button state
+      submitBtn.innerHTML = originalBtnText;
+      submitBtn.disabled = false;
+    });
+};
+function deleteMealPlanItem(id) {
+  if (!confirm('Delete this meal?')) return;
+  fetch(`/api/meal-plans/${mealPlanId}/items/${id}`, {
+    method: 'DELETE',
+    credentials: 'same-origin'
+  })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to delete item');
+      loadMealPlanItems();
+    })
+    .catch(err => alert(err.message));
+}
+document.getElementById('generateShoppingListBtn').onclick = function() {
+  // Show loading state
+  const container = document.getElementById('shoppingListContainer');
+  const btn = document.getElementById('generateShoppingListBtn');
+  const originalBtnText = btn.innerHTML;
+  
+  container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Generating shopping list...</p></div>';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+  btn.disabled = true;
+  
+  fetch(`/api/meal-plans/${mealPlanId}/shopping-list/generate`, { 
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache'
+    },
+    credentials: 'same-origin' 
+  })
+    .then(res => {
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Meal plan not found');
+        } else if (res.status === 500) {
+          throw new Error('Server error while generating shopping list');
+        }
+        throw new Error(`Error ${res.status}: Failed to generate shopping list`);
+      }
+      return res.json();
+    })
+    .then(items => {
+      if (!items || !items.length) {
+        container.innerHTML = '<div class="alert alert-info">No ingredients found for this meal plan. Make sure to add recipes first.</div>';
+        return;
+      }
+      
+      // Format quantities to two decimal places when needed
+      const formattedItems = items.map(item => {
+        const quantity = parseFloat(item.total_quantity);
+        // Format to at most 2 decimal places, avoid trailing zeros
+        const formattedQuantity = Number.isInteger(quantity) ? quantity : quantity.toFixed(2).replace(/\.?0+$/, '');
+        return {
+          ...item,
+          formatted_quantity: formattedQuantity
+        };
+      });
+      
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Shopping List</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="printShoppingList()">Print List</button>
+          </div>
+          <div class="card-body" id="printableShoppingList">
+            <table class="table table-striped">
+              <thead><tr><th>Ingredient</th><th>Quantity</th><th>Unit</th></tr></thead>
+              <tbody>
+              ${formattedItems.map(item => `
+                <tr>
+                  <td>${item.name}</td>
+                  <td>${item.formatted_quantity}</td>
+                  <td>${item.unit || ''}</td>
+                </tr>
+              `).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    })
+    .catch(err => {
+      console.error("Error generating shopping list:", err);
+      container.innerHTML = `<div class="alert alert-danger">${err.message || 'Failed to generate shopping list. Please try again.'}</div>`;
+    })
+    .finally(() => {
+      // Always restore button state
+      btn.innerHTML = originalBtnText;
+      btn.disabled = false;
+    });
+};
+
+// Add print function for shopping list
+function printShoppingList() {
+  const printContents = document.getElementById('printableShoppingList').innerHTML;
+  const originalContents = document.body.innerHTML;
+  
+  document.body.innerHTML = `
+    <div style="padding: 20px;">
+      <h1 style="text-align: center; margin-bottom: 20px;">Shopping List for ${mealPlanId}</h1>
+      ${printContents}
+    </div>
+  `;
+  
+  window.print();
+  document.body.innerHTML = originalContents;
+  
+  // Re-add event listeners after restoring the page
+  document.addEventListener('DOMContentLoaded', loadMealPlanItems);
+  document.getElementById('addMealPlanItemForm').onsubmit = addMealPlanItemHandler;
+  document.getElementById('generateShoppingListBtn').onclick = generateShoppingListHandler;
+}
+
+// Store original handlers
+const addMealPlanItemHandler = document.getElementById('addMealPlanItemForm').onsubmit;
+const generateShoppingListHandler = document.getElementById('generateShoppingListBtn').onclick;
+
+// Load meal plan items when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+  loadMealPlanItems();
+});
+</script>
+<%- include('partials/footer') %>
