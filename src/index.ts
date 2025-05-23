@@ -1320,8 +1320,22 @@ app.get('/meal-plans/:id', isAuthenticated, async (req, res) => {
       req.flash('error', 'Meal plan not found');
       return res.redirect('/meal-plans');
     }
-    // Get all user's recipes for selection
-    const recipesResult = await pool.query('SELECT id, title FROM recipes WHERE user_id = $1', [userId]);
+    
+    // Get both user's own recipes and favorited recipes for selection
+    const recipesQuery = `
+      SELECT r.id, r.title, 
+        CASE WHEN r.user_id = $1 THEN 'Your Recipe' ELSE 'Favorite' END AS recipe_type
+      FROM recipes r
+      WHERE r.user_id = $1 -- User's own recipes
+      UNION
+      SELECT r.id, r.title, 'Favorite' AS recipe_type
+      FROM recipes r
+      JOIN favorites f ON r.id = f.recipe_id
+      WHERE f.user_id = $1 -- User's favorite recipes
+      ORDER BY recipe_type, title
+    `;
+    const recipesResult = await pool.query(recipesQuery, [userId]);
+    
     res.render('meal-plan-detail', {
       title: planResult.rows[0].name,
       mealPlan: planResult.rows[0],
