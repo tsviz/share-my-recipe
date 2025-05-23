@@ -31,9 +31,24 @@
       <div class="col-md-4">
         <select class="form-select" name="recipe_id" required>
           <option value="">Select Recipe</option>
-          <% recipes.forEach(function(recipe) { %>
+          <% 
+          let lastType = '';
+          recipes.forEach(function(recipe) { 
+            // Add optgroup headers when recipe type changes
+            if (recipe.recipe_type !== lastType) {
+              if (lastType !== '') { %>
+                </optgroup>
+              <% }
+              lastType = recipe.recipe_type; 
+            %>
+              <optgroup label="<%= recipe.recipe_type %>">
+            <% } %>
             <option value="<%= recipe.id %>"><%= recipe.title %></option>
-          <% }) %>
+          <% }); 
+          // Close the last optgroup if there were any recipes
+          if (lastType !== '') { %>
+            </optgroup>
+          <% } %>
         </select>
       </div>
       <div class="col-md-1">
