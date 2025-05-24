@@ -104,14 +104,114 @@
   #shoppingListModal .table {
     color: #212529 !important;
   }
+
+  /* Force shopping list modal to be bright and fully opaque */
+  #shoppingListModal,
+  #shoppingListModal .modal-dialog,
+  #shoppingListModal .modal-content,
+  #shoppingListModal .modal-body,
+  #shoppingListModal .modal-header,
+  #shoppingListModal .modal-footer {
+    background: #fff !important;
+    color: #212529 !important;
+    opacity: 1 !important;
+    filter: none !important;
+    box-shadow: 0 8px 40px rgba(0,0,0,0.18) !important;
+    z-index: 1100 !important;
+  }
+  #shoppingListModal table,
+  #shoppingListModal tr,
+  #shoppingListModal td,
+  #shoppingListModal th {
+    background: #fff !important;
+    color: #212529 !important;
+    opacity: 1 !important;
+    filter: none !important;
+  }
+  #shoppingListModal .table-striped > tbody > tr:nth-of-type(odd) {
+    background-color: #f8f9fa !important;
+  }
+  #shoppingListModal .modal-backdrop,
+  .modal-backdrop {
+    background: rgba(0,0,0,0.5) !important;
+    opacity: 1 !important;
+    z-index: 1090 !important;
+  }
+  
+  /* Raise shopping list modal above navbar and dropdowns */
+  #shoppingListModal,
+  #shoppingListModal .modal-dialog,
+  #shoppingListModal .modal-content,
+  #shoppingListModal .modal-body,
+  #shoppingListModal .modal-header,
+  #shoppingListModal .modal-footer {
+    z-index: 1100 !important;
+  }
+  #shoppingListModal .modal-backdrop,
+  .modal-backdrop {
+    z-index: 1090 !important;
+  }
+  
+  @media print {
+    body * {
+      display: none !important;
+    }
+    .container,
+    .home-container,
+    #shoppingListModal,
+    #shoppingListModal .modal-dialog,
+    #shoppingListModal .modal-content,
+    #shoppingListModal .modal-body,
+    #shoppingListContent,
+    #printableShoppingList {
+      display: block !important;
+      position: static !important;
+      background: #fff !important;
+      color: #212529 !important;
+      box-shadow: none !important;
+      opacity: 1 !important;
+      z-index: 9999 !important;
+      padding: 0 !important;
+    }
+    #printableShoppingList {
+      padding: 24px !important;
+    }
+    #printableShoppingList table {
+      display: table !important;
+      width: 100% !important;
+      background: #fff !important;
+      color: #212529 !important;
+    }
+    #printableShoppingList thead {
+      display: table-header-group !important;
+    }
+    #printableShoppingList tbody {
+      display: table-row-group !important;
+    }
+    #printableShoppingList tr {
+      display: table-row !important;
+    }
+    #printableShoppingList th, #printableShoppingList td {
+      display: table-cell !important;
+      color: #212529 !important;
+      background: #fff !important;
+      border: 1px solid #dee2e6 !important;
+      padding: 0.5rem !important;
+    }
+  }
 </style>
 <div class="container mt-4">
   <div class="home-container">
     <h1 class="main-title text-center mb-4">My Meal Plans</h1>
     <div class="d-flex justify-content-between mb-3">
-      <button class="btn btn-success" id="generateShoppingListBtn" disabled>
-        <i class="bi bi-cart"></i> Generate Shopping List
-      </button>
+      <div>
+        <button class="btn btn-success" id="generateShoppingListBtn" disabled>
+          <i class="bi bi-cart"></i> Generate Shopping List
+        </button>
+        <button class="btn btn-outline-primary ms-2" id="toggleSelectMealPlansBtn" type="button">
+          Select All
+        </button>
+      </div>
       <div>
         <button class="btn btn-main" id="createMealPlanBtn">Create New Meal Plan</button>
         <!-- Emergency escape button for modal issues -->
@@ -302,8 +402,9 @@ document.addEventListener('DOMContentLoaded', function() {
     // Hide emergency button
     emergencyBtn.classList.add('d-none');
     
-    // Reload meal plans
-    loadMealPlans();
+    // Reload meal plans and preserve checked state
+    const checkedIds = getCheckedMealPlanIds();
+    loadMealPlans(checkedIds);
   }
   
   // Helper function: Open modal - FIXED VERSION
@@ -442,6 +543,19 @@ document.addEventListener('DOMContentLoaded', function() {
   setupShoppingListModal();
 });
 
+// Utility: Get checked meal plan IDs
+function getCheckedMealPlanIds() {
+  return Array.from(document.querySelectorAll('.meal-plan-checkbox:checked')).map(cb => cb.value);
+}
+
+// Utility: Restore checked meal plan IDs
+function restoreCheckedMealPlans(checkedIds) {
+  checkedIds.forEach(id => {
+    const cb = document.querySelector('.meal-plan-checkbox[value="' + id + '"]');
+    if (cb) cb.checked = true;
+  });
+}
+
 // Format date to be more user friendly
 function formatDate(dateString) {
   const date = new Date(dateString);
@@ -453,7 +567,8 @@ function formatDate(dateString) {
   });
 }
 
-function loadMealPlans() {
+// Update loadMealPlans to accept checkedIds
+function loadMealPlans(checkedIds) {
   fetch('/api/meal-plans', { credentials: 'same-origin' })
     .then(res => res.json())
     .then(plans => {
@@ -462,8 +577,6 @@ function loadMealPlans() {
         list.innerHTML = '<div class="alert alert-info">No meal plans yet. Click "Create New Meal Plan" to get started!</div>';
         return;
       }
-      
-      // Generate HTML with checkboxes for meal plan selection
       list.innerHTML = plans.map(plan => `
         <div class="card mb-3">
           <div class="card-body d-flex justify-content-between align-items-center">
@@ -484,9 +597,14 @@ function loadMealPlans() {
           </div>
         </div>
       `).join('');
-      
-      // Setup checkboxes after loading meal plans
       setupMealPlanCheckboxes();
+      if (checkedIds) restoreCheckedMealPlans(checkedIds);
+      // After restoring checked state, update the Generate Shopping List button
+      const generateBtn = document.getElementById('generateShoppingListBtn');
+      if (generateBtn) {
+        const checkedCount = document.querySelectorAll('.meal-plan-checkbox:checked').length;
+        generateBtn.disabled = checkedCount === 0;
+      }
     })
     .catch(err => {
       console.error("Error loading meal plans:", err);
@@ -607,6 +725,10 @@ function resetShoppingListModalStyles() {
 }
 
 function openShoppingListModal() {
+  // Hide navbar when shopping list modal is open
+  var navbar = document.querySelector('.navbar');
+  if (navbar) navbar.style.display = 'none';
+  
   // Get selected meal plan IDs
   const selectedMealPlans = Array.from(
     document.querySelectorAll('.meal-plan-checkbox:checked')
@@ -636,6 +758,8 @@ function openShoppingListModal() {
   const contentContainer = document.getElementById('shoppingListContent');
   const errorContainer = document.getElementById('shoppingListError');
   errorContainer.classList.add('d-none');
+  // Always clear previous content before inserting new shopping list
+  contentContainer.innerHTML = '';
   contentContainer.innerHTML = `
     <div class="text-center py-4">
       <div class="spinner-border text-primary" role="status">
@@ -719,10 +843,10 @@ function openShoppingListModal() {
     });
     
     // Generate shopping list HTML
+    // Always replace content, do not append
     contentContainer.innerHTML = `
-      <div id="printableShoppingList">
-        <h5 class="mb-3">Combined Shopping List</h5>
-        <table class="table table-striped">
+      <div id="printableShoppingList" style="background: #fff; color: #212529; opacity: 1; box-shadow: 0 4px 32px rgba(0,0,0,0.18); border-radius: 12px; padding: 24px;">
+        <table class="table table-striped" style="background: #fff; color: #212529; opacity: 1;">
           <thead>
             <tr>
               <th>Ingredient</th>
@@ -733,12 +857,10 @@ function openShoppingListModal() {
             ${formattedItems.map(item => {
               // Capitalize ingredient name
               const capitalizedName = item.name.charAt(0).toUpperCase() + item.name.slice(1);
-              
               // Format amount display
               const amountDisplay = item.unit 
                 ? `${item.formatted_quantity} ${item.unit}` 
                 : item.formatted_quantity;
-              
               return `
                 <tr>
                   <td>${capitalizedName}</td>
@@ -794,6 +916,34 @@ function openShoppingListModal() {
 }
 
 function closeShoppingListModal() {
+  // Show navbar when shopping list modal is closed
+  var navbar = document.querySelector('.navbar');
+  if (navbar) navbar.style.display = '';
+
+  // IMPORTANT: Do NOT reload meal plans or reset checkboxes here!
+  // Only update the toggle button label and style to reflect current checkbox state.
+  setTimeout(function() {
+    if (typeof updateToggleSelectBtn === 'function') {
+      updateToggleSelectBtn();
+    } else {
+      // fallback: update only the toggle button label and style, do NOT change checkboxes
+      var toggleSelectBtn = document.getElementById('toggleSelectMealPlansBtn');
+      if (toggleSelectBtn) {
+        const checkboxes = document.querySelectorAll('.meal-plan-checkbox');
+        const checkedCount = document.querySelectorAll('.meal-plan-checkbox:checked').length;
+        if (checkboxes.length && checkedCount === checkboxes.length) {
+          toggleSelectBtn.textContent = 'Deselect All';
+          toggleSelectBtn.classList.remove('btn-outline-primary');
+          toggleSelectBtn.classList.add('btn-outline-secondary');
+        } else {
+          toggleSelectBtn.textContent = 'Select All';
+          toggleSelectBtn.classList.remove('btn-outline-secondary');
+          toggleSelectBtn.classList.add('btn-outline-primary');
+        }
+      }
+    }
+  }, 0);
+  
   const shoppingListModal = document.getElementById('shoppingListModal');
   
   // Remove backdrop
@@ -810,51 +960,46 @@ function closeShoppingListModal() {
 }
 
 function printShoppingList() {
-  const printContents = document.getElementById('printableShoppingList').innerHTML;
-  const originalContents = document.body.innerHTML;
-  
-  // Create a print-friendly version
-  document.body.innerHTML = `
-    <div style="padding: 20px; font-family: Arial, sans-serif;">
-      <h1 style="text-align: center; margin-bottom: 10px;">Combined Shopping List</h1>
-      <div style="max-width: 800px; margin: 0 auto;">
-        ${printContents}
-      </div>
-      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #888;">
-        Generated from Share My Recipe on ${new Date().toLocaleDateString()}
-      </div>
-    </div>
-  `;
-  
-  // Add print-specific styles
-  const style = document.createElement('style');
-  style.innerHTML = `
-    @media print {
-      table { width: 100%; border-collapse: collapse; }
-      th { padding: 8px; border-bottom: 2px solid #ddd; }
-      th:first-child { text-align: left; }
-      th:last-child { text-align: right; }
-      td { padding: 8px; border-bottom: 1px solid #eee; }
-      td:last-child { text-align: right; }
-      tr:nth-child(even) { background-color: #f9f9f9; }
-    }
-  `;
-  document.head.appendChild(style);
-  
   window.print();
-  
-  // Restore original content
-  document.body.innerHTML = originalContents;
-  
-  // Re-setup event handlers
-  document.addEventListener('DOMContentLoaded', function() {
-    // Cache DOM elements
-    const modalElement = document.getElementById('mealPlanModal');
-    // ... (rest of the event setup)
-  });
-  
-  // Re-initialize shopping list modal
-  setupShoppingListModal();
 }
+
+// Add JS for select all button
+document.addEventListener('DOMContentLoaded', function() {
+  // ...existing code...
+  const toggleSelectBtn = document.getElementById('toggleSelectMealPlansBtn');
+  function updateToggleSelectBtn() {
+    const checkboxes = document.querySelectorAll('.meal-plan-checkbox');
+    const checkedCount = document.querySelectorAll('.meal-plan-checkbox:checked').length;
+    if (checkboxes.length && checkedCount === checkboxes.length) {
+      toggleSelectBtn.textContent = 'Deselect All';
+      toggleSelectBtn.classList.remove('btn-outline-primary');
+      toggleSelectBtn.classList.add('btn-outline-secondary');
+    } else {
+      toggleSelectBtn.textContent = 'Select All';
+      toggleSelectBtn.classList.remove('btn-outline-secondary');
+      toggleSelectBtn.classList.add('btn-outline-primary');
+    }
+  }
+  if (toggleSelectBtn) {
+    toggleSelectBtn.addEventListener('click', function() {
+      const checkboxes = document.querySelectorAll('.meal-plan-checkbox');
+      const checkedCount = document.querySelectorAll('.meal-plan-checkbox:checked').length;
+      const selectAll = checkedCount !== checkboxes.length;
+      checkboxes.forEach(cb => { cb.checked = selectAll; });
+      // Trigger change event to update button state
+      if (checkboxes.length) checkboxes[0].dispatchEvent(new Event('change'));
+      updateToggleSelectBtn();
+    });
+  }
+  // Update button label on checkbox change
+  document.addEventListener('change', function(e) {
+    if (e.target.classList.contains('meal-plan-checkbox')) {
+      updateToggleSelectBtn();
+    }
+  });
+  // Initial state
+  updateToggleSelectBtn();
+  // ...existing code...
+});
 </script>
 <%- include('partials/footer') %>

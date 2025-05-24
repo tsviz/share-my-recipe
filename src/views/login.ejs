@@ -68,7 +68,6 @@
                     <% } %>
                     
                     <form action="/login" method="POST">
-                        <%/* Always include the returnTo field, but only set value if it exists */%>
                         <input type="hidden" name="returnTo" value="<%= typeof returnTo !== 'undefined' ? returnTo : '' %>">
                         
                         <%/* Visually indicate if there's a redirect destination */%>

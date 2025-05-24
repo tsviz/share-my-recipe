@@ -54,7 +54,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 1 day
-    sameSite: 'lax', // allow cookies for localhost
+    sameSite: false, // allow all for debug
     secure: false    // do not require HTTPS for localhost
   }
 }));
@@ -97,67 +97,40 @@ app.get('/', (req, res) => {
 
 // Authentication Routes
 app.get('/login', isNotAuthenticated, (req, res) => {
-  // Check for returnTo in query string and store it in session
-  if (req.query.returnTo) {
-    req.session.returnTo = req.query.returnTo as string;
-    console.log('Storing returnTo from query string:', req.query.returnTo);
-  }
-
-  // Log all available information for debugging
-  console.log('Login page access:', {
-    hasReturnTo: !!req.session.returnTo,
-    returnToValue: req.session.returnTo || 'not set', 
-    hasRedirectFlash: !!req.flash('redirect'),
-    referer: req.get('Referer')
-  });
-  
-  // Render the login page with returnTo value
-  res.render('login', { 
-    returnTo: req.session.returnTo || '',
-    redirectMessage: req.flash('redirect')
+  // Always pass returnTo from session or query
+  const returnTo = req.session.returnTo || req.query.returnTo || '';
+  console.log('GET /login: req.sessionID =', req.sessionID, 'req.session =', req.session);
+  res.render('login', {
+    returnTo,
+    messages: { error: req.flash('error'), redirect: req.flash('redirect') }
   });
 });
 app.post('/login', isNotAuthenticated, (req, res, next) => {
-  // Define interfaces for the authentication types
   interface AuthInfo {
     message?: string;
   }
-
-  // Store returnTo from form submission in session if provided
   if (req.body.returnTo && req.body.returnTo.trim() !== '') {
     req.session.returnTo = req.body.returnTo;
-    console.log('Storing returnTo from form submission:', req.body.returnTo);
   }
-  
-  // Save the returnTo URL for potential login failures
-  const savedReturnTo = req.session.returnTo || '';
-
+  console.log('POST /login: req.sessionID =', req.sessionID, 'req.session =', req.session);
   passport.authenticate('local', (err: Error | null, user: any, info: AuthInfo) => {
     if (err) { return next(err); }
     if (!user) {
       req.flash('error', info.message || 'Invalid credentials');
-      // Keep the returnTo parameter when redirecting back to login page after failed attempt
-      if (savedReturnTo) {
-        return res.render('login', { 
-          returnTo: savedReturnTo,
-          messages: { error: info.message || 'Invalid credentials' }
-        });
-      }
-      return res.redirect('/login');
+      return res.render('login', {
+        returnTo: req.body.returnTo || req.session.returnTo || '',
+        messages: { error: info.message || 'Invalid credentials', redirect: req.flash('redirect') }
+      });
     }
-    
+    // Preserve returnTo across session regeneration
+    const returnTo = req.session.returnTo;
     req.logIn(user, (err: Error) => {
       if (err) { return next(err); }
-      
-      // Check if we have a saved returnTo URL in the session
-      const returnTo: string = req.session.returnTo || '/profile';
-      console.log('Login successful, redirecting to:', returnTo);
-      
-      // Clear the returnTo from session
+      req.session.returnTo = returnTo; // Restore after session regeneration
+      console.log('LOGIN REDIRECT: req.sessionID =', req.sessionID, 'req.session.returnTo =', req.session.returnTo);
+      const redirectTo: string = req.session.returnTo || '/profile';
       delete req.session.returnTo;
-      
-      // Redirect to the original URL or profile
-      return res.redirect(returnTo);
+      return res.redirect(redirectTo);
     });
   })(req, res, next);
 });
@@ -249,6 +222,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 });
 
 app.get('/profile', isAuthenticated, (req, res) => {
+  console.log('REDIRECTING TO /profile/:id', (req.user as any).id);
   res.redirect(`/profile/${(req.user as any).id}`);
 });
 
