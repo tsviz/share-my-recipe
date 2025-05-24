@@ -1,6 +1,54 @@
 <% /* src/views/meal-plans.ejs - Meal Planning UI (basic scaffold) */ %>
 <%- include('partials/header', { title: 'My Meal Plans' }) %>
 <style>
+  /* Fixed dropdown styling */
+  /* Only change z-index on dropdowns, don't force display */
+  .dropdown-menu {
+    z-index: 1060 !important; /* Higher than modal backdrop and content */
+  }
+  
+  /* Use Bootstrap's own show/hide logic */
+  .dropdown.show .dropdown-menu {
+    display: block !important;
+    opacity: 1 !important;
+    visibility: visible !important;
+    pointer-events: auto !important;
+  }
+  
+  /* Fix for header navigation elements to ensure they're clickable */
+  .navbar-nav,
+  .dropdown,
+  .dropdown-toggle,
+  .nav-item,
+  .dropdown * {
+    position: relative;
+    z-index: 1055 !important; /* Higher than modal backdrop */
+  }
+  
+  /* Specific fix for profile dropdown */
+  #dropdownMenuButton {
+    position: relative;
+    z-index: 1080 !important; /* Highest z-index to ensure clickability */
+    cursor: pointer !important;
+  }
+  
+  /* Specific fixes for the profile dropdown menu */
+  .dropdown-menu-end {
+    right: 0;
+    left: auto;
+    position: absolute;
+    inset: 0px auto auto 0px;
+    margin: 0;
+    transform: translate(-16px, 40px);
+    z-index: 1080 !important;
+  }
+  
+  /* Make sure meal-plans page doesn't affect Bootstrap's dropdown functionality */
+  .modal-open .dropdown-menu.show {
+    z-index: 1080 !important;
+    display: block !important;
+  }
+  
   /* Override Bootstrap's modal styles to ensure proper mouse interaction */
   .modal-dialog {
     pointer-events: auto !important;
@@ -22,16 +70,55 @@
   .modal-body textarea {
     cursor: text;
   }
+  /* Ensure shopping list modal elements are clickable */
+  .modal-backdrop {
+    pointer-events: none !important;
+    z-index: 1040 !important; /* Lower than dropdowns */
+  }
+  /* Fix for the shopping list modal - ensure all elements are fully visible and clickable */
+  #shoppingListModal, 
+  #shoppingListModal *,
+  #shoppingListModal .modal-dialog,
+  #shoppingListModal .modal-content,
+  #shoppingListModal .modal-body,
+  #shoppingListModal .modal-header,
+  #shoppingListModal .modal-footer {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    filter: none !important;
+    color: inherit !important;
+  }
+  #shoppingListModal table,
+  #shoppingListModal tr,
+  #shoppingListModal td,
+  #shoppingListModal th {
+    pointer-events: auto !important;
+    opacity: 1 !important;
+    color: #000 !important;
+  }
+  #shoppingListContent {
+    opacity: 1 !important;
+    color: #000 !important;
+  }
+  /* Ensure table text inside modal is clearly visible */
+  #shoppingListModal .table {
+    color: #212529 !important;
+  }
 </style>
 <div class="container mt-4">
   <div class="home-container">
     <h1 class="main-title text-center mb-4">My Meal Plans</h1>
-    <div class="text-end mb-3">
-      <button class="btn btn-main" id="createMealPlanBtn">Create New Meal Plan</button>
-      <!-- Emergency escape button for modal issues -->
-      <button id="emergencyCloseBtn" class="btn btn-danger ms-2 d-none">
-        Emergency Close Modal
+    <div class="d-flex justify-content-between mb-3">
+      <button class="btn btn-success" id="generateShoppingListBtn" disabled>
+        <i class="bi bi-cart"></i> Generate Shopping List
       </button>
+      <div>
+        <button class="btn btn-main" id="createMealPlanBtn">Create New Meal Plan</button>
+        <!-- Emergency escape button for modal issues -->
+        <button id="emergencyCloseBtn" class="btn btn-danger ms-2 d-none">
+          Emergency Close Modal
+        </button>
+      </div>
     </div>
     <!-- Create Meal Plan Modal -->
     <div class="modal" id="mealPlanModal" tabindex="-1" aria-labelledby="mealPlanModalLabel" aria-hidden="true">
@@ -68,10 +155,105 @@
     <div id="mealPlansList">
       <!-- Meal plans will be loaded here by client-side JS or server-side rendering -->
     </div>
+    
+    <!-- Shopping List Modal -->
+    <div class="modal fade" id="shoppingListModal" tabindex="-1" aria-labelledby="shoppingListModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="shoppingListModalLabel">Combined Shopping List</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <div id="shoppingListError" class="alert alert-danger d-none"></div>
+            <div id="shoppingListContent"></div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            <button type="button" class="btn btn-main" id="printShoppingListBtn">Print List</button>
+          </div>
+        </div>
+      </div>
+    </div>
   </div>
 </div>
-<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
+// Fix for Bootstrap dropdowns specifically in the meal-plans page
+document.addEventListener('DOMContentLoaded', function() {
+  // Make sure Bootstrap is fully loaded - it should be from header.ejs
+  if (typeof bootstrap === 'undefined') {
+    console.error('Bootstrap is not loaded properly. Check your scripts.');
+    return;
+  }
+  
+  // Fix for profile dropdown
+  const userDropdown = document.getElementById('dropdownMenuButton');
+  if (userDropdown) {
+    // Remove any existing event listeners by cloning the node
+    const newDropdown = userDropdown.cloneNode(true);
+    userDropdown.parentNode.replaceChild(newDropdown, userDropdown);
+    
+    // Add click event to new element
+    newDropdown.addEventListener('click', function(event) {
+      event.stopPropagation();
+      
+      // Since we're in the meal-plans page, create a new dropdown instance
+      const dropdownInstance = new bootstrap.Dropdown(newDropdown, {
+        reference: 'toggle',
+        boundary: 'viewport'
+      });
+      
+      // Force dropdown to show correctly
+      setTimeout(() => {
+        const menu = document.querySelector('.dropdown-menu');
+        if (menu) {
+          menu.classList.add('show');
+          menu.setAttribute('data-bs-popper', 'static');
+          menu.style.position = 'absolute';
+          menu.style.inset = 'auto auto auto auto';
+          menu.style.transform = 'translate(0px, 40px)';
+        }
+      }, 10);
+    });
+  }
+  
+  // We'll use the tooltip initialization from the header.ejs file
+  
+  // Ensure Bootstrap components are properly initialized on this page
+  // by manually adding show/hide functionality
+  document.body.addEventListener('click', function(event) {
+    // Close other dropdowns when clicking outside
+    if (!event.target.closest('.dropdown')) {
+      document.querySelectorAll('.dropdown-menu.show').forEach(function(menu) {
+        menu.classList.remove('show');
+      });
+    }
+  });
+  
+  // Enable manually toggling the dropdown when clicking the toggle button
+  document.querySelectorAll('.dropdown-toggle').forEach(function(toggle) {
+    toggle.addEventListener('click', function(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      
+      const menu = toggle.nextElementSibling;
+      if (menu && menu.classList.contains('dropdown-menu')) {
+        const isVisible = menu.classList.contains('show');
+        
+        // Close all open dropdowns
+        document.querySelectorAll('.dropdown-menu.show').forEach(function(openMenu) {
+          openMenu.classList.remove('show');
+        });
+        
+        // Toggle this dropdown
+        if (!isVisible) {
+          menu.classList.add('show');
+        }
+      }
+    });
+  });
+});
+
 /**
  * Completely refactored modal implementation with simpler, more reliable approach
  * Avoiding Bootstrap's Modal JavaScript API entirely
@@ -251,6 +433,13 @@ document.addEventListener('DOMContentLoaded', function() {
   });
   
   loadMealPlans();
+  
+  // Handle shopping list generation
+  const generateShoppingListBtn = document.getElementById('generateShoppingListBtn');
+  generateShoppingListBtn.addEventListener('click', openShoppingListModal);
+  
+  // Set up shopping list modal
+  setupShoppingListModal();
 });
 
 // Format date to be more user friendly
@@ -273,12 +462,20 @@ function loadMealPlans() {
         list.innerHTML = '<div class="alert alert-info">No meal plans yet. Click "Create New Meal Plan" to get started!</div>';
         return;
       }
+      
+      // Generate HTML with checkboxes for meal plan selection
       list.innerHTML = plans.map(plan => `
         <div class="card mb-3">
           <div class="card-body d-flex justify-content-between align-items-center">
-            <div>
-              <h5 class="card-title mb-1">${plan.name}</h5>
-              <p class="card-text mb-0">${formatDate(plan.start_date)} to ${formatDate(plan.end_date)}</p>
+            <div class="d-flex align-items-center">
+              <div class="form-check me-3">
+                <input class="form-check-input meal-plan-checkbox" type="checkbox" value="${plan.id}" id="mealPlan${plan.id}">
+                <label class="form-check-label" for="mealPlan${plan.id}"></label>
+              </div>
+              <div>
+                <h5 class="card-title mb-1">${plan.name}</h5>
+                <p class="card-text mb-0">${formatDate(plan.start_date)} to ${formatDate(plan.end_date)}</p>
+              </div>
             </div>
             <div>
               <a href="/meal-plans/${plan.id}" class="btn btn-outline-secondary btn-sm me-2">View</a>
@@ -287,6 +484,9 @@ function loadMealPlans() {
           </div>
         </div>
       `).join('');
+      
+      // Setup checkboxes after loading meal plans
+      setupMealPlanCheckboxes();
     })
     .catch(err => {
       console.error("Error loading meal plans:", err);
@@ -306,6 +506,355 @@ function deleteMealPlan(id) {
       loadMealPlans();
     })
     .catch(err => alert(err.message));
+}
+
+// Setup event listeners after meal plans are loaded
+function setupMealPlanCheckboxes() {
+  const checkboxes = document.querySelectorAll('.meal-plan-checkbox');
+  const generateBtn = document.getElementById('generateShoppingListBtn');
+  
+  // Update button state based on checkbox selection
+  function updateButtonState() {
+    const checkedCount = document.querySelectorAll('.meal-plan-checkbox:checked').length;
+    generateBtn.disabled = checkedCount === 0;
+  }
+  
+  // Add event listeners to each checkbox
+  checkboxes.forEach(checkbox => {
+    checkbox.addEventListener('change', updateButtonState);
+  });
+  
+  // Initial button state
+  updateButtonState();
+}
+
+// Handle the shopping list modal
+function setupShoppingListModal() {
+  // Get modal elements
+  const shoppingListModal = document.getElementById('shoppingListModal');
+  const modalBackdrop = document.createElement('div');
+  modalBackdrop.className = 'modal-backdrop fade show';
+  
+  // Get print button
+  const printBtn = document.getElementById('printShoppingListBtn');
+  
+  // Add event listeners to close buttons
+  const closeButtons = shoppingListModal.querySelectorAll('[data-bs-dismiss="modal"]');
+  closeButtons.forEach(button => {
+    button.addEventListener('click', closeShoppingListModal);
+  });
+  
+  // Add print functionality
+  printBtn.addEventListener('click', printShoppingList);
+  
+  // Close modal when clicking outside
+  shoppingListModal.addEventListener('click', e => {
+    if (e.target === shoppingListModal) {
+      closeShoppingListModal();
+    }
+  });
+  
+  // Close on escape key
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && shoppingListModal.classList.contains('show')) {
+      closeShoppingListModal();
+    }
+  });
+}
+
+// Resets all shopping list modal styles to ensure visibility
+function resetShoppingListModalStyles() {
+  const modal = document.getElementById('shoppingListModal');
+  if (!modal) return;
+  
+  // Apply CSS resets directly to modal and its children
+  modal.style.opacity = '1';
+  modal.style.pointerEvents = 'auto';
+  modal.style.filter = 'none';
+  
+  // Apply to all nested elements
+  modal.querySelectorAll('*').forEach(elem => {
+    elem.style.opacity = '1';
+    elem.style.pointerEvents = 'auto';
+    elem.style.filter = 'none';
+    
+    // Only set color for text elements
+    if (['TD', 'TH', 'P', 'SPAN', 'H5', 'H4', 'H3', 'H2', 'H1', 'BUTTON', 'A', 'LABEL'].includes(elem.tagName)) {
+      elem.style.color = elem.tagName === 'BUTTON' && elem.classList.contains('btn-secondary') ? '' : '#000';
+    }
+  });
+  
+  // Fix modal dialog and its content
+  const modalDialog = modal.querySelector('.modal-dialog');
+  if (modalDialog) {
+    modalDialog.style.opacity = '1';
+    modalDialog.style.pointerEvents = 'auto';
+  }
+  
+  const modalContent = modal.querySelector('.modal-content');
+  if (modalContent) {
+    modalContent.style.opacity = '1';
+    modalContent.style.pointerEvents = 'auto';
+  }
+  
+  // Fix modal body specifically
+  const modalBody = modal.querySelector('.modal-body');
+  if (modalBody) {
+    modalBody.style.opacity = '1';
+    modalBody.style.pointerEvents = 'auto';
+    modalBody.style.color = '#000';
+  }
+}
+
+function openShoppingListModal() {
+  // Get selected meal plan IDs
+  const selectedMealPlans = Array.from(
+    document.querySelectorAll('.meal-plan-checkbox:checked')
+  ).map(cb => cb.value);
+  
+  if (selectedMealPlans.length === 0) {
+    alert('Please select at least one meal plan');
+    return;
+  }
+  
+  // Reset modal styles immediately
+  resetShoppingListModalStyles();
+  
+  // Show modal
+  const shoppingListModal = document.getElementById('shoppingListModal');
+  
+  // First reset all modal styles
+  resetShoppingListModalStyles();
+  
+  // Create backdrop that won't interfere with modal interaction
+  const modalBackdrop = document.createElement('div');
+  modalBackdrop.className = 'modal-backdrop fade show';
+  modalBackdrop.style.pointerEvents = 'none'; // Allow clicks to pass through backdrop
+  modalBackdrop.style.zIndex = '1040'; // Ensure it's behind the modal
+  
+  // Show loading state
+  const contentContainer = document.getElementById('shoppingListContent');
+  const errorContainer = document.getElementById('shoppingListError');
+  errorContainer.classList.add('d-none');
+  contentContainer.innerHTML = `
+    <div class="text-center py-4">
+      <div class="spinner-border text-primary" role="status">
+        <span class="visually-hidden">Loading...</span>
+      </div>
+      <p class="mt-2" style="color: #000; opacity: 1;">Generating your shopping list...</p>
+    </div>
+  `;
+  
+  // Display modal with proper z-index and visibility settings
+  document.body.appendChild(modalBackdrop);
+  shoppingListModal.classList.add('show');
+  shoppingListModal.style.display = 'block';
+  shoppingListModal.style.pointerEvents = 'auto'; // Ensure modal is clickable
+  shoppingListModal.style.opacity = '1';
+  shoppingListModal.style.zIndex = '1050'; // Ensure modal is above backdrop
+  document.body.style.overflow = 'hidden';
+  document.body.classList.add('modal-open');
+  
+  // Force re-apply styles to ensure content is visible
+  setTimeout(resetShoppingListModalStyles, 50);
+  
+  // Ensure shopping list modal is interactive
+  const modalDialog = shoppingListModal.querySelector('.modal-dialog');
+  if (modalDialog) {
+    modalDialog.style.pointerEvents = 'auto';
+  }
+  
+  // Ensure all interactive elements within the modal have proper pointer events
+  const modalContent = shoppingListModal.querySelector('.modal-content');
+  if (modalContent) {
+    modalContent.style.pointerEvents = 'auto';
+    modalContent.style.opacity = '1';
+    modalContent.style.filter = 'none';
+    
+    // Apply styling to all elements in the shopping list modal
+    shoppingListModal.querySelectorAll('*').forEach(elem => {
+      elem.style.pointerEvents = 'auto';
+      elem.style.opacity = '1';
+      elem.style.filter = 'none';
+      
+      // Only set color for elements that should have text
+      if (elem.tagName !== 'DIV' && elem.tagName !== 'SECTION') {
+        elem.style.color = elem.tagName === 'BUTTON' ? '' : '#000';
+      }
+    });
+  }
+  
+  // Make API request
+  fetch('/api/shopping-list/generate-combined', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify({ mealPlanIds: selectedMealPlans })
+  })
+  .then(res => {
+    if (!res.ok) {
+      return res.json().then(data => {
+        throw new Error(data.error || 'Failed to generate shopping list');
+      });
+    }
+    return res.json();
+  })
+  .then(items => {
+    if (!items || items.length === 0) {
+      contentContainer.innerHTML = '<div class="alert alert-info">No ingredients found in these meal plans. Try adding recipes first.</div>';
+      return;
+    }
+    
+    // Format quantities and standardize units
+    const formattedItems = items.map(item => {
+      const quantity = parseFloat(item.total_quantity);
+      // Format to at most 2 decimal places, avoid trailing zeros
+      const formattedQuantity = Number.isInteger(quantity) ? quantity : quantity.toFixed(2).replace(/\.?0+$/, '');
+      
+      return {
+        name: item.name,
+        formatted_quantity: formattedQuantity,
+        unit: item.unit || ''
+      };
+    });
+    
+    // Generate shopping list HTML
+    contentContainer.innerHTML = `
+      <div id="printableShoppingList">
+        <h5 class="mb-3">Combined Shopping List</h5>
+        <table class="table table-striped">
+          <thead>
+            <tr>
+              <th>Ingredient</th>
+              <th class="text-end">Amount</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${formattedItems.map(item => {
+              // Capitalize ingredient name
+              const capitalizedName = item.name.charAt(0).toUpperCase() + item.name.slice(1);
+              
+              // Format amount display
+              const amountDisplay = item.unit 
+                ? `${item.formatted_quantity} ${item.unit}` 
+                : item.formatted_quantity;
+              
+              return `
+                <tr>
+                  <td>${capitalizedName}</td>
+                  <td class="text-end">${amountDisplay}</td>
+                </tr>
+              `;
+            }).join('')}
+          </tbody>
+        </table>
+      </div>
+    `;
+    
+    // Reset all modal styles to ensure content is visible
+    resetShoppingListModalStyles();
+    
+    // Additional specific fixes for the shopping list content
+    document.querySelectorAll('#shoppingListContent *, #shoppingListContent table, #shoppingListContent tr, #shoppingListContent td, #shoppingListContent th').forEach(elem => {
+      elem.style.pointerEvents = 'auto';
+      elem.style.opacity = '1';
+      elem.style.color = '#000'; // Ensure text is not grayed out
+      elem.style.filter = 'none'; // Remove any filter effects
+    });
+    
+    // Additional fix for the table specifically
+    const table = document.querySelector('#shoppingListContent table');
+    if (table) {
+      table.style.color = '#212529';
+      table.classList.add('table-reset');
+    }
+    
+    // Set a timeout to ensure styles are applied after any potential DOM updates
+    setTimeout(resetShoppingListModalStyles, 100);
+  })
+  .catch(err => {
+    console.error('Shopping list error:', err);
+    
+    // Make sure error container is visible and reset its styles
+    errorContainer.textContent = err.message || 'An error occurred while generating the shopping list';
+    errorContainer.classList.remove('d-none');
+    errorContainer.style.opacity = '1';
+    errorContainer.style.color = '#721c24';
+    errorContainer.style.backgroundColor = '#f8d7da';
+    errorContainer.style.borderColor = '#f5c6cb';
+    errorContainer.style.padding = '0.75rem 1.25rem';
+    errorContainer.style.marginBottom = '1rem';
+    errorContainer.style.pointerEvents = 'auto';
+    
+    contentContainer.innerHTML = '';
+    
+    // Reset modal styles to ensure error is visible
+    resetShoppingListModalStyles();
+  });
+}
+
+function closeShoppingListModal() {
+  const shoppingListModal = document.getElementById('shoppingListModal');
+  
+  // Remove backdrop
+  const backdrops = document.getElementsByClassName('modal-backdrop');
+  while (backdrops.length > 0) {
+    backdrops[0].parentNode.removeChild(backdrops[0]);
+  }
+  
+  // Hide modal
+  shoppingListModal.classList.remove('show');
+  shoppingListModal.style.display = 'none';
+  document.body.style.overflow = '';
+  document.body.classList.remove('modal-open');
+}
+
+function printShoppingList() {
+  const printContents = document.getElementById('printableShoppingList').innerHTML;
+  const originalContents = document.body.innerHTML;
+  
+  // Create a print-friendly version
+  document.body.innerHTML = `
+    <div style="padding: 20px; font-family: Arial, sans-serif;">
+      <h1 style="text-align: center; margin-bottom: 10px;">Combined Shopping List</h1>
+      <div style="max-width: 800px; margin: 0 auto;">
+        ${printContents}
+      </div>
+      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #888;">
+        Generated from Share My Recipe on ${new Date().toLocaleDateString()}
+      </div>
+    </div>
+  `;
+  
+  // Add print-specific styles
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @media print {
+      table { width: 100%; border-collapse: collapse; }
+      th { padding: 8px; border-bottom: 2px solid #ddd; }
+      th:first-child { text-align: left; }
+      th:last-child { text-align: right; }
+      td { padding: 8px; border-bottom: 1px solid #eee; }
+      td:last-child { text-align: right; }
+      tr:nth-child(even) { background-color: #f9f9f9; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  window.print();
+  
+  // Restore original content
+  document.body.innerHTML = originalContents;
+  
+  // Re-setup event handlers
+  document.addEventListener('DOMContentLoaded', function() {
+    // Cache DOM elements
+    const modalElement = document.getElementById('mealPlanModal');
+    // ... (rest of the event setup)
+  });
+  
+  // Re-initialize shopping list modal
+  setupShoppingListModal();
 }
 </script>
 <%- include('partials/footer') %>

@@ -16,9 +16,12 @@
     </div>
     <hr>
     <h5>Add Recipe to Meal Plan</h5>
+    <p class="small text-muted">Note: You can only add recipes for dates within the meal plan's time frame.</p>
     <form id="addMealPlanItemForm" class="row g-2">
       <div class="col-md-3">
-        <input type="date" class="form-control" name="meal_date" required id="meal_date_input">
+        <input type="date" class="form-control" name="meal_date" required id="meal_date_input" 
+               min="<%= new Date(mealPlan.start_date).toISOString().split('T')[0] %>" 
+               max="<%= new Date(mealPlan.end_date).toISOString().split('T')[0] %>">
       </div>
       <div class="col-md-3">
         <select class="form-select" name="meal_time" required>
@@ -238,6 +241,9 @@ document.getElementById('addMealPlanItemForm').onsubmit = function(e) {
   submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
   submitBtn.disabled = true;
   
+  // No need for client-side date range validation since the HTML input element already
+  // restricts date selection with min/max attributes, and the server also validates dates
+  
   fetch(`/api/meal-plans/${mealPlanId}/items`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -249,7 +255,7 @@ document.getElementById('addMealPlanItemForm').onsubmit = function(e) {
         const contentType = res.headers.get("content-type");
         if (contentType && contentType.indexOf("application/json") !== -1) {
           return res.json().then(errData => {
-            throw new Error(errData.error || 'Failed to add item');
+            throw new Error(errData.details ? `${errData.error}: ${errData.details}` : errData.error || 'Failed to add item');
           });
         } else {
           throw new Error('Failed to add item');

@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 import path from 'path';
 import passport from 'passport';
 import session from 'express-session';
+import { Session, SessionData } from 'express-session';
 import flash from 'connect-flash';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
@@ -96,14 +97,70 @@ app.get('/', (req, res) => {
 
 // Authentication Routes
 app.get('/login', isNotAuthenticated, (req, res) => {
-  res.render('login', { title: 'Login - Share My Recipe' });
-});
+  // Check for returnTo in query string and store it in session
+  if (req.query.returnTo) {
+    req.session.returnTo = req.query.returnTo as string;
+    console.log('Storing returnTo from query string:', req.query.returnTo);
+  }
 
-app.post('/login', isNotAuthenticated, passport.authenticate('local', {
-  successRedirect: '/dashboard',
-  failureRedirect: '/login',
-  failureFlash: true
-}));
+  // Log all available information for debugging
+  console.log('Login page access:', {
+    hasReturnTo: !!req.session.returnTo,
+    returnToValue: req.session.returnTo || 'not set', 
+    hasRedirectFlash: !!req.flash('redirect'),
+    referer: req.get('Referer')
+  });
+  
+  // Render the login page with returnTo value
+  res.render('login', { 
+    returnTo: req.session.returnTo || '',
+    redirectMessage: req.flash('redirect')
+  });
+});
+app.post('/login', isNotAuthenticated, (req, res, next) => {
+  // Define interfaces for the authentication types
+  interface AuthInfo {
+    message?: string;
+  }
+
+  // Store returnTo from form submission in session if provided
+  if (req.body.returnTo && req.body.returnTo.trim() !== '') {
+    req.session.returnTo = req.body.returnTo;
+    console.log('Storing returnTo from form submission:', req.body.returnTo);
+  }
+  
+  // Save the returnTo URL for potential login failures
+  const savedReturnTo = req.session.returnTo || '';
+
+  passport.authenticate('local', (err: Error | null, user: any, info: AuthInfo) => {
+    if (err) { return next(err); }
+    if (!user) {
+      req.flash('error', info.message || 'Invalid credentials');
+      // Keep the returnTo parameter when redirecting back to login page after failed attempt
+      if (savedReturnTo) {
+        return res.render('login', { 
+          returnTo: savedReturnTo,
+          messages: { error: info.message || 'Invalid credentials' }
+        });
+      }
+      return res.redirect('/login');
+    }
+    
+    req.logIn(user, (err: Error) => {
+      if (err) { return next(err); }
+      
+      // Check if we have a saved returnTo URL in the session
+      const returnTo: string = req.session.returnTo || '/profile';
+      console.log('Login successful, redirecting to:', returnTo);
+      
+      // Clear the returnTo from session
+      delete req.session.returnTo;
+      
+      // Redirect to the original URL or profile
+      return res.redirect(returnTo);
+    });
+  })(req, res, next);
+});
 
 app.get('/register', isNotAuthenticated, (req, res) => {
   res.render('register', { title: 'Register - Share My Recipe' });
@@ -1304,6 +1361,10 @@ app.use('/api/meal-plans/:mealPlanId/items', (req, res, next) => mealPlanItemRou
 // API route for generating shopping list for a meal plan
 app.use('/api/meal-plans/:mealPlanId/shopping-list', (req, res, next) => shoppingListRoutes(pool)(req, res, next));
 
+// API route for generating a combined shopping list for multiple meal plans
+import { combinedShoppingListRoutes } from './routes/shoppingListRoutes';
+app.use('/api/shopping-list', combinedShoppingListRoutes(pool));
+
 // Route to render the "Meal Plans" page
 app.get('/meal-plans', isAuthenticated, (req, res) => {
   res.render('meal-plans', { title: 'My Meal Plans', user: req.user });
@@ -1336,9 +1397,17 @@ app.get('/meal-plans/:id', isAuthenticated, async (req, res) => {
     `;
     const recipesResult = await pool.query(recipesQuery, [userId]);
     
+    // Ensure dates are proper date objects before passing to template
+    const mealPlan = {
+      ...planResult.rows[0],
+      // Make sure dates are properly formatted
+      start_date: new Date(planResult.rows[0].start_date),
+      end_date: new Date(planResult.rows[0].end_date)
+    };
+    
     res.render('meal-plan-detail', {
-      title: planResult.rows[0].name,
-      mealPlan: planResult.rows[0],
+      title: mealPlan.name,
+      mealPlan: mealPlan,
       recipes: recipesResult.rows
     });
   } catch (error) {
