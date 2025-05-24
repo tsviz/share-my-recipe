@@ -13,6 +13,9 @@ declare global {
       flash(type: string, message?: any): any;
       logout(callback: (err: any) => void): void;
     }
+    interface Session {
+      returnTo?: string;
+    }
   }
 }
 

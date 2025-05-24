@@ -1,6 +1,14 @@
 import { Pool } from 'pg';
 import bcrypt from 'bcrypt';
 import { Request, Response, NextFunction } from 'express';
+import 'express-session';
+
+// Extend the express-session types
+declare module 'express-session' {
+  interface SessionData {
+    returnTo?: string;
+  }
+}
 
 // Register new user
 export async function registerUser(
@@ -119,12 +127,27 @@ export async function changeUserPassword(
 export function isAuthenticated(req: Request, res: Response, next: NextFunction) {
   console.log('isAuthenticated middleware:', {
     isAuthenticated: req.isAuthenticated(),
-    user: req.user
+    user: req.user,
+    currentUrl: req.originalUrl
   });
   if (req.isAuthenticated()) {
     return next();
   }
-  req.flash('error', 'You must be logged in to perform this action.');
+  
+  // Store the URL the user is trying to access
+  // Check if it's not a login, logout, or register URL to avoid redirect loops
+  if (!['/login', '/register', '/logout'].includes(req.originalUrl)) {
+    // Store the full URL including query parameters
+    const fullUrl = req.originalUrl;
+    req.session.returnTo = fullUrl;
+    console.log('Storing returnTo URL:', fullUrl);
+    
+    // Create a descriptive message that indicates which page they'll return to
+    const pageName = fullUrl.split('/').pop()?.split('?')[0] || 'the page';
+    const customMessage = `Please log in to access ${pageName}`;
+    req.flash('redirect', customMessage);
+  }
+  
   res.redirect('/login');
 }
 
@@ -133,5 +156,25 @@ export function isNotAuthenticated(req: Request, res: Response, next: NextFuncti
   if (!req.isAuthenticated()) {
     return next();
   }
-  res.redirect('/dashboard');
+  
+  // For authenticated users, determine where to redirect them
+  
+  // First priority: returnTo in query string (explicit redirection)
+  if (req.query.returnTo) {
+    const redirectUrl = req.query.returnTo as string;
+    console.log('Redirecting already authenticated user to query param destination:', redirectUrl);
+    return res.redirect(redirectUrl);
+  }
+  
+  // Second priority: returnTo in session (saved from previous navigation)
+  if (req.session.returnTo) {
+    const redirectUrl = req.session.returnTo;
+    console.log('Redirecting already authenticated user to session-saved destination:', redirectUrl);
+    delete req.session.returnTo; // Clear the returnTo
+    return res.redirect(redirectUrl);
+  }
+  
+  // Last resort: redirect to profile page
+  console.log('No redirect destination found, sending to profile page');
+  res.redirect('/profile');
 }

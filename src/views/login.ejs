@@ -61,7 +61,23 @@
                         </div>
                     <% } %>
                     
+                    <% if(messages.redirect) { %>
+                        <div class="alert alert-info">
+                            <%= messages.redirect %>
+                        </div>
+                    <% } %>
+                    
                     <form action="/login" method="POST">
+                        <%/* Always include the returnTo field, but only set value if it exists */%>
+                        <input type="hidden" name="returnTo" value="<%= typeof returnTo !== 'undefined' ? returnTo : '' %>">
+                        
+                        <%/* Visually indicate if there's a redirect destination */%>
+                        <% if(typeof returnTo !== 'undefined' && returnTo) { %>
+                            <div class="mb-3 small text-muted">
+                                <i class="bi bi-arrow-return-right"></i> 
+                                You'll be redirected back to your previous page after login.
+                            </div>
+                        <% } %>
                         <div class="mb-3">
                             <label for="email" class="form-label">Email address</label>
                             <input type="email" class="form-control" id="email" name="email" required>
