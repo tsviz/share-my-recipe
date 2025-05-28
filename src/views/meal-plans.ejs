@@ -152,6 +152,14 @@
     z-index: 1090 !important;
   }
   
+  /* Make the shopping list modal backdrop transparent (no dimming) */
+  body.modal-open #shoppingListModal.show ~ .modal-backdrop,
+  body.modal-open #shoppingListModal.show + .modal-backdrop,
+  body.modal-open .modal-backdrop {
+    background: transparent !important;
+    opacity: 0 !important;
+  }
+  
   @media print {
     body * {
       display: none !important;
