@@ -263,8 +263,9 @@ export class RecipeSearchService {
   /**
    * Extract a specific cuisine requested by the user from query text
    * Focuses on finding explicit cuisine requests
+   * Optionally skips any cuisine in the excludeCuisines list
    */
-  private extractSpecificCuisineFromQuery(query: string): string | null {
+  private extractSpecificCuisineFromQuery(query: string, excludeCuisines: string[] = []): string | null {
     const lowerQuery = query.toLowerCase();
     
     // Check for specific cuisine requests like "Mexican food" or "Italian recipes"
@@ -305,8 +306,12 @@ export class RecipeSearchService {
       
       for (const pattern of specificRequests) {
         if (pattern.test(lowerQuery)) {
-          console.log(`Found specific request for ${cuisine} cuisine`);
-          return cuisine;
+          if (!excludeCuisines.includes(cuisine)) {
+            console.log(`Found specific request for ${cuisine} cuisine`);
+            return cuisine;
+          } else {
+            console.log(`Skipping specific request for excluded cuisine: ${cuisine}`);
+          }
         }
       }
     }
@@ -323,25 +328,23 @@ export class RecipeSearchService {
       const match = lowerQuery.match(pattern);
       if (match && match[1]) {
         const potentialCuisine = match[1].trim().toLowerCase();
-        
-        // Check if it matches one of our known cuisines
         for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
-          if (potentialCuisine === keyword.toLowerCase()) {
+          if (potentialCuisine === keyword.toLowerCase() && !excludeCuisines.includes(cuisine)) {
             console.log(`Extracted explicit cuisine request: ${cuisine}`);
             return cuisine;
           }
         }
       }
     }
-    
     return null;
   }
 
   /**
    * Extract cuisines from user query text
    * Used when the LLM doesn't identify a cuisine
+   * Optionally skips any cuisine in the excludeCuisines list
    */
-  private extractCuisinesFromQuery(query: string): string | null {
+  private extractCuisinesFromQuery(query: string, excludeCuisines: string[] = []): string | null {
     const lowerQuery = query.toLowerCase();
     
     // Check for direct mention of Indian cuisine specifically (highest priority)
@@ -351,14 +354,21 @@ export class RecipeSearchService {
         lowerQuery.includes('indian food') ||
         lowerQuery.includes('from india') ||
         lowerQuery.includes('from indian')) {
-      console.log('Found explicit mention of Indian cuisine');
-      return 'Indian';
+      if (!excludeCuisines.includes('Indian')) {
+        console.log('Found explicit mention of Indian cuisine');
+        return 'Indian';
+      } else {
+        console.log('Skipping explicit mention of excluded cuisine: Indian');
+      }
     }
-    
     // Direct check for India vs Indian
     if (lowerQuery.includes('india')) {
-      console.log('Found mention of India, returning Indian cuisine');
-      return 'Indian';
+      if (!excludeCuisines.includes('Indian')) {
+        console.log('Found mention of India, returning Indian cuisine');
+        return 'Indian';
+      } else {
+        console.log('Skipping mention of excluded cuisine: Indian');
+      }
     }
     
     // Common cuisine keywords to check for
@@ -408,13 +418,20 @@ export class RecipeSearchService {
     // Check for direct mentions of cuisines
     for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
       if (lowerQuery.includes(keyword) && lowerQuery.includes('only from')) {
-        console.log(`Found cuisine with "only from" specification: ${cuisine}`);
-        return cuisine;
+        if (!excludeCuisines.includes(cuisine)) {
+          console.log(`Found cuisine with "only from" specification: ${cuisine}`);
+          return cuisine;
+        } else {
+          console.log(`Skipping 'only from' specification for excluded cuisine: ${cuisine}`);
+        }
       }
-      
       if (lowerQuery.includes(keyword)) {
-        console.log(`Extracted cuisine from query: ${cuisine}`);
-        return cuisine;
+        if (!excludeCuisines.includes(cuisine)) {
+          console.log(`Extracted cuisine from query: ${cuisine}`);
+          return cuisine;
+        } else {
+          console.log(`Skipping extracted cuisine from query (excluded): ${cuisine}`);
+        }
       }
     }
     
@@ -430,22 +447,21 @@ export class RecipeSearchService {
       const match = lowerQuery.match(pattern);
       if (match && match[1]) {
         const potentialCuisine = match[1].trim();
-        
-        // Skip if very short
         if (potentialCuisine.length > 3) {
-          // Try to map to a standard cuisine name
           for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
-            if (potentialCuisine.toLowerCase().includes(keyword)) {
+            if (potentialCuisine.toLowerCase().includes(keyword) && !excludeCuisines.includes(cuisine)) {
               console.log(`Matched pattern cuisine to standard name: ${cuisine}`);
               return cuisine;
             }
           }
-          
-          // If no standard match, capitalize first letter
           const formattedCuisine = potentialCuisine.charAt(0).toUpperCase() + 
                                   potentialCuisine.slice(1);
-          console.log(`Extracted cuisine from pattern: ${formattedCuisine}`);
-          return formattedCuisine;
+          if (!excludeCuisines.includes(formattedCuisine)) {
+            console.log(`Extracted cuisine from pattern: ${formattedCuisine}`);
+            return formattedCuisine;
+          } else {
+            console.log(`Skipping extracted cuisine from pattern (excluded): ${formattedCuisine}`);
+          }
         }
       }
     }
@@ -454,13 +470,83 @@ export class RecipeSearchService {
   }
 
   /**
+   * Extract cuisines to exclude from user query (e.g., 'no Italian', 'exclude Italian', 'do not recommend any Italian')
+   */
+  private extractExcludedCuisinesFromQuery(query: string): string[] {
+    const lowerQuery = query.toLowerCase();
+    const cuisineKeywords: {[key: string]: string} = {
+      'american': 'American',
+      'italian': 'Italian',
+      'mexican': 'Mexican',
+      'chinese': 'Chinese',
+      'japanese': 'Japanese',
+      'thai': 'Thai',
+      'indian': 'Indian',
+      'french': 'French',
+      'mediterranean': 'Mediterranean',
+      'greek': 'Greek',
+      'spanish': 'Spanish',
+      'middle eastern': 'Middle Eastern',
+      'korean': 'Korean',
+      'vietnamese': 'Vietnamese',
+      'jewish': 'Jewish',
+      'german': 'German',
+      'ethiopian': 'Ethiopian',
+      'african': 'African',
+      'brazilian': 'Brazilian',
+      'caribbean': 'Caribbean'
+    };
+    const excludeCuisines: string[] = [];
+
+    // 1. Match negative phrases with multiple cuisines (e.g., 'do not recommend any Middle Eastern or Italian recipes')
+    const multiNegPattern = /(?:do not recommend|don't recommend|no|not|without|exclude|avoid)[^\w]*(any\s+)?((?:[a-zA-Z\s]+?)(?:\s+or\s+[a-zA-Z\s]+)+)(?:\s+recipes|\s+cuisine|\s+dishes|\s+food)?/gi;
+    let match;
+    while ((match = multiNegPattern.exec(lowerQuery)) !== null) {
+      const cuisineList = match[2];
+      if (cuisineList) {
+        // Split on 'or', 'and', and commas
+        const parts = cuisineList.split(/\s+or\s+|\s+and\s+|,/i).map(s => s.trim());
+        for (const part of parts) {
+          for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+            if (part.includes(keyword) && !excludeCuisines.includes(cuisine)) {
+              excludeCuisines.push(cuisine);
+            }
+          }
+        }
+      }
+    }
+
+    // 2. Fallback: match single negative cuisine phrases (legacy logic)
+    for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
+      const patterns = [
+        new RegExp(`no\\s+${keyword}`, 'i'),
+        new RegExp(`exclude\\s+${keyword}`, 'i'),
+        new RegExp(`without\\s+${keyword}`, 'i'),
+        new RegExp(`not\\s+${keyword}`, 'i'),
+        new RegExp(`do not recommend( any)?\\s+${keyword}`, 'i'),
+        new RegExp(`don't recommend( any)?\\s+${keyword}`, 'i'),
+        new RegExp(`avoid\\s+${keyword}`, 'i')
+      ];
+      if (patterns.some(p => p.test(lowerQuery)) && !excludeCuisines.includes(cuisine)) {
+        excludeCuisines.push(cuisine);
+      }
+    }
+    return excludeCuisines;
+  }
+
+  /**
    * Search recipes with AI-enhanced understanding of user's preferences
    * The main function is to evaluate user statements and convert them into appropriate database search parameters
    */
   public async searchRecipes(userQuery: string): Promise<any[]> {
     try {
+      // Extract excluded cuisines from the user query
+      const excludeCuisines: string[] = this.extractExcludedCuisinesFromQuery(userQuery);
       console.log('=== USER PREFERENCE DETECTION ===');
       console.log('User input:', userQuery);
+      if (excludeCuisines.length > 0) {
+        console.log('User wants to exclude cuisines:', excludeCuisines);
+      }
 
       // Normalize query for caching
       const normalizedQuery = userQuery.toLowerCase().trim();
@@ -479,44 +565,53 @@ export class RecipeSearchService {
       // Skip AI if we've had too many consecutive failures
       if (!this.aiAvailable) {
         console.log('AI service marked as unavailable due to previous failures, using fallback search');
-        const results = await this.fallbackSearch(userQuery);
+        const results = await this.fallbackSearch(userQuery, excludeCuisines);
         this.saveToCache(normalizedQuery, results);
         return results;
+      }
+
+      // === LLM-driven SQL WHERE clause generation ===
+      const llmWhereClause = await this.getSqlWhereClauseFromLLM(userQuery);
+      if (llmWhereClause) {
+        let sqlQuery = `SELECT r.id, r.title, r.description, r.cuisine, r.category_id FROM recipes r WHERE ${llmWhereClause} ORDER BY r.popularity DESC LIMIT 20`;
+        console.log('Executing LLM-driven SQL query:', sqlQuery);
+        let result;
+        try {
+          result = await this.pool.query(sqlQuery);
+        } catch (e) {
+          console.error('Error executing LLM-driven SQL:', e);
+          result = { rows: [] };
+        }
+        // Defensive post-filtering for excluded cuisines
+        let filteredResults = result.rows;
+        if (excludeCuisines.length > 0) {
+          filteredResults = filteredResults.filter(recipe => !excludeCuisines.some(ex => (recipe.cuisine || '').toLowerCase().includes(ex.toLowerCase())));
+        }
+        if (filteredResults.length > 0) {
+          this.saveToCache(normalizedQuery, filteredResults);
+          return filteredResults;
+        }
+        // If LLM-driven query returns no results, fall back to legacy/manual logic
+        console.log('LLM-driven SQL returned no results, falling back to legacy/manual logic.');
       }
 
       // AI analysis and SQL query generation
       const aiAnalysis = await this.analyzeQueryWithAI(userQuery);
       console.log('AI analysis of query:', aiAnalysis);
 
-      // Ensure Jewish cuisine is included in the analysis
-      this.ensureJewishCuisineInclusion(aiAnalysis);
+      // Remove any excluded cuisines from the inclusion list before building the SQL
+      aiAnalysis.cuisines = aiAnalysis.cuisines.filter((cuisine: string) => !excludeCuisines.includes(cuisine));
+      // Only keep valid cuisines
+      const validCuisines: string[] = [
+        'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
+        'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
+        'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
+      ];
+      aiAnalysis.cuisines = aiAnalysis.cuisines.filter((cuisine: string) => validCuisines.includes(cuisine));
 
-      // Ensure all recognized cuisines are included in the analysis
-      this.ensureAllCuisinesInclusion(aiAnalysis);
-
-      // Filter out generic or 'Not specified' values from AI analysis
-      aiAnalysis.mainDish = aiAnalysis.mainDish.filter((dish: string) => dish !== 'Not specified');
-      aiAnalysis.cuisines = aiAnalysis.cuisines.filter((cuisine: string) => cuisine !== 'Not specified');
-      aiAnalysis.includeIngredients = aiAnalysis.includeIngredients.filter((ingredient: string) => ingredient !== 'Not specified');
-      aiAnalysis.excludeIngredients = aiAnalysis.excludeIngredients.filter((ingredient: string): boolean => ingredient !== 'Not specified');
-      aiAnalysis.dietaryPreferences = aiAnalysis.dietaryPreferences.filter((preference: string): boolean => preference !== 'Not specified');
-      aiAnalysis.cookingMethods = aiAnalysis.cookingMethods.filter((method: string): boolean => method !== 'Not specified');
-
-      // Filter out invalid cuisines before executing the SQL query
-      aiAnalysis.cuisines = aiAnalysis.cuisines.filter((cuisine: string): boolean => {
-        const validCuisines: string[] = [
-          'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
-          'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
-          'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
-        ];
-        return validCuisines.includes(cuisine);
-      });
-
-      // Remove the unused block that initializes paramIndex since it's declared again later
-      if (aiAnalysis.cuisines.length > 0) {
-        console.log(`Filtering search by cuisines: ${aiAnalysis.cuisines.join(', ')}`);
-        // This block appears to be incomplete/unused code
-      }
+      // Cuisine exclusion: only apply if not all valid cuisines would be excluded
+      const cuisinesLeftForExclusion = validCuisines.filter(c => !excludeCuisines.includes(c));
+      const shouldApplyCuisineExclusion = excludeCuisines.length > 0 && cuisinesLeftForExclusion.length > 0;
 
       // If all fields are empty after filtering, enhance with LLM
       if (
@@ -544,104 +639,116 @@ export class RecipeSearchService {
           return resolvedItems.length > 0 ? resolvedItems : [ingredient];
         })
       );
-      
-      // Expand included ingredients similarly
       const expandedInclusions: string[][] = await Promise.all(
         aiAnalysis.includeIngredients.map(async (ingredient: string): Promise<string[]> => {
           const resolvedItems: string[] = await this.glossaryService.resolveCategory(ingredient);
           return resolvedItems.length > 0 ? resolvedItems : [ingredient];
         })
       );
-
-      // Flatten the arrays of resolved ingredients
       const flattenedExclusions = expandedExclusions.flat();
       const flattenedInclusions = expandedInclusions.flat();
-      
       console.log('Expanded included ingredients:', flattenedInclusions);
 
       // Check if the user explicitly requested a specific cuisine
-      const requestedCuisine = this.extractCuisinesFromQuery(userQuery);
-      
+      const requestedCuisine = this.extractCuisinesFromQuery(userQuery, excludeCuisines);
+
       // Build a SQL query that prioritizes the requested cuisine
       let sqlQuery = `
         SELECT r.id, r.title, r.description, r.cuisine, r.category_id
         FROM recipes r
         WHERE 1=1
       `;
-
       const sqlParams: any[] = [];
       let paramIndex = 1;
 
+      // Category filtering (if category is specified in AI analysis)
+      if (aiAnalysis.category && aiAnalysis.category.length > 0) {
+        sqlQuery += ` AND r.category_id IN (
+          SELECT id FROM categories WHERE name ILIKE $${paramIndex}
+        )`;
+        sqlParams.push(`%${aiAnalysis.category[0]}%`);
+        paramIndex++;
+      }
+
       // Update the logic to prioritize only explicitly requested cuisines when specified
       if (requestedCuisine) {
-        console.log(`User specifically requested ${requestedCuisine} cuisine, restricting results.`);
         sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
         sqlParams.push(`%${requestedCuisine}%`);
         paramIndex++;
       } else if (aiAnalysis.cuisines.length > 0) {
-        console.log(`Prioritizing user-specified cuisines: ${aiAnalysis.cuisines.join(', ')}`);
         const cuisineConditions: string[] = aiAnalysis.cuisines.map((cuisine: string, index: number): string => `r.cuisine ILIKE $${paramIndex + index}`);
         sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
         sqlParams.push(...(aiAnalysis.cuisines as string[]).map((cuisine: string) => `%${cuisine}%`));
         paramIndex += aiAnalysis.cuisines.length;
       }
 
+      // Cuisine exclusion: only apply if not all valid cuisines would be excluded
+      if (shouldApplyCuisineExclusion) {
+        excludeCuisines.forEach((cuisine) => {
+          sqlQuery += ` AND r.cuisine NOT ILIKE $${paramIndex}`;
+          sqlParams.push(`%${cuisine}%`);
+          paramIndex++;
+        });
+      }
+
+      // Strict inclusion: Only recipes that include ALL specified ingredients
+      if (flattenedInclusions.length > 0) {
+        sqlQuery += ` AND r.id IN (
+          SELECT ri.recipe_id FROM recipe_ingredients ri
+          JOIN ingredients i ON ri.ingredient_id = i.id
+          WHERE `;
+        const inclConds: string[] = [];
+        flattenedInclusions.forEach((ingredient, idx) => {
+          inclConds.push(`i.name ILIKE $${paramIndex + idx}`);
+          sqlParams.push(`%${ingredient}%`);
+        });
+        sqlQuery += inclConds.join(' OR ');
+        sqlQuery += ` GROUP BY ri.recipe_id HAVING COUNT(DISTINCT i.name) >= ${flattenedInclusions.length}`;
+        sqlQuery += `)`;
+        paramIndex += flattenedInclusions.length;
+      }
+
+      // Strict exclusion: Exclude recipes that contain ANY of the excluded ingredients
+      if (flattenedExclusions.length > 0) {
+        sqlQuery += ` AND r.id NOT IN (
+          SELECT ri.recipe_id FROM recipe_ingredients ri
+          JOIN ingredients i ON ri.ingredient_id = i.id
+          WHERE `;
+        const exclConds: string[] = [];
+        flattenedExclusions.forEach((ingredient, idx) => {
+          exclConds.push(`i.name ILIKE $${paramIndex + idx}`);
+          sqlParams.push(`%${ingredient}%`);
+        });
+        sqlQuery += exclConds.join(' OR ');
+        sqlQuery += `)`;
+        paramIndex += flattenedExclusions.length;
+      }
+
       // Add filters for main dish if specified
       if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
         const dishConditions: string[] = [];
-        
         for (const dish of aiAnalysis.mainDish) {
           dishConditions.push(`(r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`);
           sqlParams.push(`%${dish}%`);
           paramIndex++;
         }
-        
         if (dishConditions.length > 0) {
           sqlQuery += ` AND (${dishConditions.join(' OR ')})`;
         }
       }
 
-      // Adjusting SQL query to prioritize user-specified cuisines dynamically
-      if (aiAnalysis.cuisines.length > 0) {
-        console.log(`Prioritizing user-specified cuisines: ${aiAnalysis.cuisines.join(', ')}`);
-        sqlQuery += ` ORDER BY 
-          CASE
-            ${aiAnalysis.cuisines.map((cuisine: string, index: number) => `WHEN r.cuisine ILIKE $${paramIndex + index} THEN ${index + 1}`).join(' ')}
-            ELSE ${aiAnalysis.cuisines.length + 1}
-          END, 
-          r.popularity DESC LIMIT 20`;
-        sqlParams.push(...(aiAnalysis.cuisines as string[]).map((cuisine: string) => `%${cuisine}%`));
-        paramIndex += aiAnalysis.cuisines.length;
-      } else {
-        sqlQuery += ` ORDER BY r.popularity DESC LIMIT 20`;
-      }
-
-      console.log('Executing AI-enhanced SQL query:', sqlQuery);
-      console.log('With parameters:', sqlParams);
-
+      // Execute the SQL query and handle results
       const result = await this.pool.query(sqlQuery, sqlParams);
-
-      // Post-process results to filter out any remaining recipes that mention excluded ingredients
       let filteredResults = result.rows;
-      if (flattenedExclusions.length > 0) {
-        // List of common implicit dairy terms
-        const implicitDairyTerms = [
-          ...flattenedExclusions.map(e => e.toLowerCase()),
-          'creamy', 'cheesy', 'cheddar', 'mozzarella', 'parmesan', 'feta', 'ricotta', 'gouda', 'swiss', 'provolone', 'brie', 'camembert', 'mascarpone', 'gruyere', 'blue cheese', 'cream cheese', 'custard', 'yoghurt', 'yogurt', 'icecream', 'ice cream', 'buttermilk', 'evaporated milk', 'condensed milk', 'whipped cream', 'half and half', 'sourcream', 'sour cream', 'milk chocolate', 'white chocolate'
-        ];
-        filteredResults = result.rows.filter(recipe => {
-          const lowerTitle = recipe.title.toLowerCase();
-          const lowerDesc = recipe.description.toLowerCase();
-          // Exclude if any explicit or implicit dairy term is found
-          return !implicitDairyTerms.some(term => lowerTitle.includes(term) || lowerDesc.includes(term));
-        });
-        
-        console.log(`Post-filtering removed ${result.rows.length - filteredResults.length} recipes containing excluded or implicit dairy terms in title/description`);
+
+      // Defensive post-filtering for excluded cuisines
+      if (excludeCuisines.length > 0) {
+        filteredResults = filteredResults.filter(recipe => !excludeCuisines.some(ex => (recipe.cuisine || '').toLowerCase().includes(ex.toLowerCase())));
       }
-      
-      if (filteredResults.length === 0) {
+
+      if (!filteredResults || filteredResults.length === 0) {
         console.log('Filtered search returned no results, trying fallback search');
-        const fallbackResults = await this.fallbackSearch(userQuery);
+        const fallbackResults = await this.fallbackSearch(userQuery, excludeCuisines);
         this.saveToCache(normalizedQuery, fallbackResults);
         return fallbackResults;
       }
@@ -650,43 +757,91 @@ export class RecipeSearchService {
       return filteredResults;
     } catch (error) {
       console.error('Error in recipe search:', error);
-      const fallbackResults = await this.fallbackSearch(userQuery);
+      // Extract excluded cuisines again in the catch block
+      const excludeCuisines: string[] = this.extractExcludedCuisinesFromQuery(userQuery);
+      const fallbackResults = await this.fallbackSearch(userQuery, excludeCuisines);
       this.saveToCache(userQuery, fallbackResults);
       return fallbackResults;
     }
   }
 
-  private async fallbackSearch(query: string): Promise<any[]> {
+  /**
+   * Ask the LLM to generate a SQL WHERE clause for the user's query intent
+   * Patched: Explicitly list allowed columns and forbid use of any others. Validate output.
+   */
+  private async getSqlWhereClauseFromLLM(userQuery: string): Promise<string | null> {
+    // Explicit schema and allowed columns
+    const allowedColumns = ['id', 'title', 'description', 'cuisine', 'category_id'];
+    const prompt = `Given the following user request for recipes, generate a safe SQL WHERE clause (excluding the word 'WHERE') for a PostgreSQL query on a 'recipes' table.\n\nThe 'recipes' table has ONLY these columns:\n  - id (integer, primary key)\n  - title (text)\n  - description (text)\n  - cuisine (text, e.g. 'Italian', 'Mexican', etc.)\n  - category_id (integer, foreign key to categories)\n\nYou MUST use only these columns. Do NOT use or invent any other columns.\n\nThe clause should strictly follow the user's intent, including any negative constraints (e.g., 'do not recommend any Italian recipes' should become "cuisine NOT ILIKE '%Italian%'").\nOnly return the WHERE clause, nothing else.\nUser request: ${userQuery}`;
+    try {
+      const response = await this.llmClient.generateCompletion(prompt, {});
+      // Clean up and extract the clause (remove any 'WHERE' prefix, trim)
+      let clause = response.trim();
+      if (clause.toLowerCase().startsWith('where ')) {
+        clause = clause.slice(6).trim();
+      }
+      // Basic validation: must not be empty, must not contain dangerous SQL
+      if (!clause || clause.match(/;|--|drop|delete|update|insert|alter|create|grant|revoke|truncate/i)) {
+        return null;
+      }
+      // Additional validation: check for invalid columns
+      const invalidColumnRegex = /([a-zA-Z_][a-zA-Z0-9_]*)\s*(=|ILIKE|NOT|IN|IS|>|<)/g;
+      let match;
+      while ((match = invalidColumnRegex.exec(clause)) !== null) {
+        const col = match[1];
+        if (!allowedColumns.includes(col)) {
+          console.warn(`LLM SQL clause references invalid column: ${col}`);
+          return null;
+        }
+      }
+      return clause;
+    } catch (e) {
+      console.error('LLM SQL clause generation failed:', e);
+      return null;
+    }
+  }
+
+  // Fallback search: add excludeCuisines param and logic
+  private async fallbackSearch(query: string, excludeCuisines: string[] = []): Promise<any[]> {
     console.log('Fallback search executed for query:', query);
-
-    // Respect user preferences in fallback search
     const aiAnalysis = this.createFallbackAnalysis(query);
-
-    // Build a more specific fallback query if mainDish is identified
     let sqlQuery = `
       SELECT r.id, r.title, r.description, r.cuisine, r.category_id
       FROM recipes r
       WHERE 1=1
     `;
-
     const sqlParams: any[] = [];
     let paramIndex = 1;
-
-    // Update fallback search logic to prioritize explicitly requested cuisines
     const requestedCuisine = this.extractSpecificCuisineFromQuery(query);
-    if (requestedCuisine) {
-      console.log(`User specifically requested ${requestedCuisine} cuisine, restricting fallback results.`);
+    // Only add inclusion filter if not in exclusion list
+    if (requestedCuisine && !excludeCuisines.includes(requestedCuisine)) {
       sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
       sqlParams.push(`%${requestedCuisine}%`);
       paramIndex++;
     } else if (aiAnalysis.cuisines.length > 0) {
-      console.log(`Filtering fallback search by cuisines: ${aiAnalysis.cuisines.join(', ')}`);
-      const cuisineConditions: string[] = aiAnalysis.cuisines.map((cuisine: string, index: number): string => `r.cuisine ILIKE $${paramIndex + index}`);
-      sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
-      sqlParams.push(...(aiAnalysis.cuisines as string[]).map((cuisine: string) => `%${cuisine}%`));
-      paramIndex += aiAnalysis.cuisines.length;
+      // Remove any excluded cuisines from inclusion list
+      const filteredCuisines = aiAnalysis.cuisines.filter((c: string) => !excludeCuisines.includes(c));
+      if (filteredCuisines.length > 0) {
+        const cuisineConditions: string[] = filteredCuisines.map((cuisine: string, index: number): string => `r.cuisine ILIKE $${paramIndex + index}`);
+        sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
+        sqlParams.push(...(filteredCuisines as string[]).map((cuisine: string) => `%${cuisine}%`));
+        paramIndex += filteredCuisines.length;
+      }
     }
-
+    // Exclude cuisines in fallback, but only if not all would be excluded
+    const validCuisines: string[] = [
+      'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
+      'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
+      'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
+    ];
+    const cuisinesLeft = validCuisines.filter(c => !excludeCuisines.includes(c));
+    if (excludeCuisines.length > 0 && cuisinesLeft.length > 0) {
+      excludeCuisines.forEach((cuisine) => {
+        sqlQuery += ` AND r.cuisine NOT ILIKE $${paramIndex}`;
+        sqlParams.push(`%${cuisine}%`);
+        paramIndex++;
+      });
+    }
     // Also check if query explicitly mentions Jewish food
     if (query.toLowerCase().includes('jewish food') || 
         query.toLowerCase().includes('jewish recipe') || 
@@ -731,7 +886,12 @@ export class RecipeSearchService {
     console.log('With parameters:', sqlParams);
 
     const result = await this.pool.query(sqlQuery, sqlParams);
-    return result.rows;
+    // Post-filter: remove any recipes with an excluded cuisine
+    let filteredResults = result.rows;
+    if (excludeCuisines.length > 0) {
+      filteredResults = filteredResults.filter(recipe => !excludeCuisines.some(ex => (recipe.cuisine || '').toLowerCase().includes(ex.toLowerCase())));
+    }
+    return filteredResults;
   }
 
   /**
@@ -757,7 +917,7 @@ export class RecipeSearchService {
     ingredients: string[];
     cuisines: string[];
     dishes: string[];
-  }, originalQuery: string): Promise<any[]> {
+  }, originalQuery: string, excludeCuisines: string[] = []): Promise<any[]> {
     try {
       console.log('Executing glossary-based search with terms:', glossaryTerms);
       
@@ -832,6 +992,21 @@ export class RecipeSearchService {
         }
       }
       
+      // Exclude cuisines in glossary-based search, but only if not all would be excluded
+      const validCuisines: string[] = [
+        'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
+        'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
+        'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
+      ];
+      const cuisinesLeft = validCuisines.filter(c => !excludeCuisines.includes(c));
+      if (excludeCuisines.length > 0 && cuisinesLeft.length > 0) {
+        excludeCuisines.forEach((cuisine) => {
+          sqlQuery += ` AND r.cuisine NOT ILIKE $${paramIndex}`;
+          sqlParams.push(`%${cuisine}%`);
+          paramIndex++;
+        });
+      }
+      
       // Add ranking and limit
       sqlQuery += `
         ORDER BY 
@@ -848,22 +1023,23 @@ export class RecipeSearchService {
       console.log('With parameters:', sqlParams);
       
       const result = await this.pool.query(sqlQuery, sqlParams);
-      console.log(`Glossary-based search returned ${result.rows.length} matching recipes`);
-      
-      // If no results, fall back to standard search
-      if (result.rows.length === 0) {
-        console.log('Glossary search returned no results, trying fallback search');
-        return await this.fallbackSearch(originalQuery);
+      // Post-filter: remove any recipes with an excluded cuisine
+      let filteredRows = result.rows;
+      if (excludeCuisines.length > 0) {
+        filteredRows = filteredRows.filter(recipe => !excludeCuisines.some(ex => (recipe.cuisine || '').toLowerCase().includes(ex.toLowerCase())));
       }
-      
+      // If no results, fall back to standard search
+      if (filteredRows.length === 0) {
+        console.log('Glossary search returned no results, trying fallback search');
+        return await this.fallbackSearch(originalQuery, excludeCuisines);
+      }
       // Print final recommendations
       console.log('=== FINAL RECOMMENDATIONS (GLOSSARY-BASED) ===');
-      result.rows.slice(0, 12).forEach(recipe => {
+      filteredRows.slice(0, 12).forEach(recipe => {
         console.log(`- ${recipe.title} (${recipe.description})`);
       });
-      
       // Tag the results with a glossary explanation
-      return result.rows.map(row => ({
+      return filteredRows.map(row => ({
         ...row,
         search_method: 'glossary',
         glossary_terms: {
@@ -874,7 +1050,7 @@ export class RecipeSearchService {
       }));
     } catch (error) {
       console.error('Error in glossary-based search:', error);
-      return this.fallbackSearch(originalQuery);
+      return this.fallbackSearch(originalQuery, excludeCuisines);
     }
   }
   
@@ -1258,7 +1434,7 @@ export class RecipeSearchService {
 
     // If no dietary preferences were identified, check for common dietary keywords
     if (!aiAnalysis.dietaryPreferences || aiAnalysis.dietaryPreferences.length === 0) {
-      const dietaryKeywords: {[key: string]: string} = {
+      const dietaryKeywords = {
         'vegan': 'vegan',
         'vegetarian': 'vegetarian',
         'kosher': 'kosher',
@@ -1345,7 +1521,6 @@ export class RecipeSearchService {
         'vietnamese': 'Vietnamese'
       };
       
-      // Check if the query mentions any cuisine
       for (const [keyword, cuisine] of Object.entries(cuisineKeywords)) {
         if (query.includes(keyword)) {
           console.log(`Identified missed cuisine: ${cuisine} from query`);
@@ -1608,7 +1783,7 @@ export class RecipeSearchService {
       console.error('Error generating positive vibe with LLM:', error);
       return 'Yummy! Here are some recipes you might enjoy!';
     }
-  }
+ }
 }
 
 interface AIResponseAssumptions {
@@ -1632,13 +1807,12 @@ function humanizeAIResponse(rawResponse: string): string {
     "Here are the AI's assumptions based on your query:",
     parsedAssumptions.mainDish.length ? `Main Dish: ${parsedAssumptions.mainDish.join(', ')}` : null,
     parsedAssumptions.cuisines.length ? `Cuisine: ${parsedAssumptions.cuisines.join(', ')}` : null,
-    parsedAssumptions.includeIngredients.length ? `Included Ingredients: ${parsedAssumptions.includeIngredients.join(', ')}` : null,
-    parsedAssumptions.excludeIngredients.length ? `Excluded Ingredients: ${parsedAssumptions.excludeIngredients.join(', ')}` : null,
+    parsedAssumptions.includeIngredients.length ? `Includes: ${parsedAssumptions.includeIngredients.join(', ')}` : null,
+    parsedAssumptions.excludeIngredients.length ? `Excludes: ${parsedAssumptions.excludeIngredients.join(', ')}` : null,
     parsedAssumptions.dietaryPreferences.length ? `Dietary Preferences: ${parsedAssumptions.dietaryPreferences.join(', ')}` : null,
-    parsedAssumptions.cookingMethods.length ? `Cooking Methods: ${parsedAssumptions.cookingMethods.join(', ')}` : null
-  ].filter(Boolean).join('\n');
+    parsedAssumptions.cookingMethods.length ? `Cooking Methods: ${parsedAssumptions.cookingMethods.join(', ')}` : null,
+    null
+  ];
 
-  return humanizedResponse;
+  return humanizedResponse.filter(Boolean).join('\n');
 }
-
-export { humanizeAIResponse };
