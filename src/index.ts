@@ -8,6 +8,7 @@ import { Pool } from 'pg';
 import path from 'path';
 import passport from 'passport';
 import session from 'express-session';
+import { Session, SessionData } from 'express-session';
 import flash from 'connect-flash';
 import bcrypt from 'bcrypt';
 import multer from 'multer';
@@ -19,6 +20,10 @@ import { RecipeSearchService } from './llm/recipe-search-service';
 // Import authentication modules
 import configurePassport from './auth/passport-config';
 import { registerUser, updateUserProfile, changeUserPassword, isAuthenticated, isNotAuthenticated } from './auth/auth-utils';
+import { mealPlanRoutes } from './routes/mealPlanRoutes';
+import { mealPlanItemRoutes } from './routes/mealPlanItemRoutes';
+import { shoppingListRoutes } from './routes/shoppingListRoutes';
+import { recipeCommentsRoutes } from './routes/recipeCommentsRoutes';
 
 const app = express();
 const port = 3000;
@@ -50,7 +55,7 @@ app.use(session({
   saveUninitialized: false,
   cookie: {
     maxAge: 1000 * 60 * 60 * 24, // 1 day
-    sameSite: 'lax', // allow cookies for localhost
+    sameSite: false, // allow all for debug
     secure: false    // do not require HTTPS for localhost
   }
 }));
@@ -93,14 +98,43 @@ app.get('/', (req, res) => {
 
 // Authentication Routes
 app.get('/login', isNotAuthenticated, (req, res) => {
-  res.render('login');
+  // Always pass returnTo from session or query
+  const returnTo = req.session.returnTo || req.query.returnTo || '';
+  console.log('GET /login: req.sessionID =', req.sessionID, 'req.session =', req.session);
+  res.render('login', {
+    returnTo,
+    messages: { error: req.flash('error'), redirect: req.flash('redirect') }
+  });
 });
-
-app.post('/login', isNotAuthenticated, passport.authenticate('local', {
-  successRedirect: '/dashboard',
-  failureRedirect: '/login',
-  failureFlash: true
-}));
+app.post('/login', isNotAuthenticated, (req, res, next) => {
+  interface AuthInfo {
+    message?: string;
+  }
+  if (req.body.returnTo && req.body.returnTo.trim() !== '') {
+    req.session.returnTo = req.body.returnTo;
+  }
+  console.log('POST /login: req.sessionID =', req.sessionID, 'req.session =', req.session);
+  passport.authenticate('local', (err: Error | null, user: any, info: AuthInfo) => {
+    if (err) { return next(err); }
+    if (!user) {
+      req.flash('error', info.message || 'Invalid credentials');
+      return res.render('login', {
+        returnTo: req.body.returnTo || req.session.returnTo || '',
+        messages: { error: info.message || 'Invalid credentials', redirect: req.flash('redirect') }
+      });
+    }
+    // Preserve returnTo across session regeneration
+    const returnTo = req.session.returnTo;
+    req.logIn(user, (err: Error) => {
+      if (err) { return next(err); }
+      req.session.returnTo = returnTo; // Restore after session regeneration
+      console.log('LOGIN REDIRECT: req.sessionID =', req.sessionID, 'req.session.returnTo =', req.session.returnTo);
+      const redirectTo: string = req.session.returnTo || '/profile';
+      delete req.session.returnTo;
+      return res.redirect(redirectTo);
+    });
+  })(req, res, next);
+});
 
 app.get('/register', isNotAuthenticated, (req, res) => {
   res.render('register');
@@ -189,6 +223,7 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
 });
 
 app.get('/profile', isAuthenticated, (req, res) => {
+  console.log('REDIRECTING TO /profile/:id', (req.user as any).id);
   res.redirect(`/profile/${(req.user as any).id}`);
 });
 
@@ -262,14 +297,17 @@ app.get('/profile/:userId', async (req, res) => {
     const user = userResult.rows[0];
     
     // Get user's recipes
-    const recipesResult = await pool.query(
-      `SELECT r.*, c.name as category_name 
-       FROM recipes r 
-       LEFT JOIN categories c ON r.category_id = c.id 
-       WHERE r.user_id = $1 
-       ORDER BY r.id DESC`,
-      [userId]
-    );
+    const recipesResult = await pool.query(`
+      SELECT r.*, c.name as category_name,
+        COALESCE(AVG(rc.rating), 0) as average_rating,
+        COUNT(rc.rating) as rating_count
+      FROM recipes r
+      LEFT JOIN categories c ON r.category_id = c.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
+      WHERE r.user_id = $1
+      GROUP BY r.id, c.name
+      ORDER BY r.id DESC
+    `, [userId]);
     
     // Get count of user's favorite recipes
     const favoritesResult = await pool.query(
@@ -294,7 +332,7 @@ app.get('/profile/:userId', async (req, res) => {
 });
 
 // New route to display a user's profile, their recipes, and their favorite recipes
-app.get('/users/:id', async (req, res) => {
+app.get('/users/:id', isAuthenticated, async (req, res) => {
   const userId = req.params.id;
   try {
     // Fetch user info
@@ -307,22 +345,31 @@ app.get('/users/:id', async (req, res) => {
 
     // Fetch user's own recipes
     const recipesResult = await pool.query(`
-      SELECT r.*, c.name as category_name
+      SELECT r.*, c.name as category_name,
+        COALESCE(AVG(rc.rating), 0) as average_rating,
+        COUNT(rc.rating) as rating_count
       FROM recipes r
       LEFT JOIN categories c ON r.category_id = c.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE r.user_id = $1
+      GROUP BY r.id, c.name
       ORDER BY r.id DESC
     `, [userId]);
     const recipes = recipesResult.rows;
 
     // Fetch user's favorite recipes
     const favResult = await pool.query(`
-      SELECT r.*, c.name as category_name, u.username
+      SELECT r.*, c.name as category_name, u.username,
+        f.created_at,
+        COALESCE(AVG(rc.rating), 0) as average_rating,
+        COUNT(rc.rating) as rating_count
       FROM favorites f
       JOIN recipes r ON f.recipe_id = r.id
       LEFT JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE f.user_id = $1
+      GROUP BY r.id, c.name, u.username, f.created_at
       ORDER BY f.created_at DESC
     `, [userId]);
     const favoriteRecipes = favResult.rows;
@@ -740,7 +787,32 @@ app.get('/recipes/:id', async (req, res) => {
     }
     recipe.isFavorited = isFavorited;
 
-    res.render('recipe-detail', { title: recipe.title, recipe, user: req.user });
+    // Fetch comments and ratings for this recipe
+    const commentsResult = await pool.query(
+      `SELECT rc.*, u.username FROM recipe_comments rc
+       JOIN users u ON rc.user_id = u.id
+       WHERE rc.recipe_id = $1
+       ORDER BY rc.created_at DESC`,
+      [recipeId]
+    );
+    const comments = commentsResult.rows;
+
+    // Calculate average rating (if any comments exist)
+    let averageRating = null;
+    if (comments.length > 0) {
+      const sum = comments.reduce((acc, c) => acc + (c.rating || 0), 0);
+      averageRating = (sum / comments.length).toFixed(1);
+    }
+
+    res.render('recipe-detail', {
+      title: recipe.title,
+      recipe,
+      user: req.user,
+      comments,
+      averageRating,
+      isAuthenticated: !!req.user,
+      formatDate: (date: any) => new Date(date).toLocaleString()
+    });
   } catch (error) {
     console.error(error);
     req.flash('error', 'Failed to load recipe');
@@ -757,11 +829,14 @@ app.get('/recipes', async (req, res) => {
     const pageSize = 15;
     const offset = (page - 1) * pageSize;
     
-    // Simpler query structure to reduce potential points of failure
+    // Query with average rating calculation
     let query = `
-      SELECT r.*, u.username
+      SELECT r.*, u.username,
+             COALESCE(AVG(rc.rating), 0) as average_rating,
+             COUNT(rc.rating) as rating_count
       FROM recipes r
       JOIN users u ON r.user_id = u.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE 1=1
     `;
     
@@ -785,6 +860,9 @@ app.get('/recipes', async (req, res) => {
       params.push(`%${cuisine}%`);
       paramIndex++;
     }
+    
+    // Add GROUP BY clause for the aggregate functions
+    query += ` GROUP BY r.id, u.username`;
     
     // Count total recipes for pagination
     const countQuery = `SELECT COUNT(*) FROM (${query}) AS count_query`;
@@ -970,6 +1048,73 @@ app.get('/favorites', isAuthenticated, async (req, res) => {
     res.redirect('/dashboard');
   }
 });
+
+// API routes for meal plans
+app.use('/api/meal-plans', mealPlanRoutes(pool));
+
+// API routes for meal plan items (nested under meal plans)
+app.use('/api/meal-plans/:mealPlanId/items', (req, res, next) => mealPlanItemRoutes(pool)(req, res, next));
+
+// API route for generating shopping list for a meal plan
+app.use('/api/meal-plans/:mealPlanId/shopping-list', (req, res, next) => shoppingListRoutes(pool)(req, res, next));
+
+// API route for generating a combined shopping list for multiple meal plans
+import { combinedShoppingListRoutes } from './routes/shoppingListRoutes';
+app.use('/api/shopping-list', combinedShoppingListRoutes(pool));
+
+// Route to render the "Meal Plans" page
+app.get('/meal-plans', isAuthenticated, (req, res) => {
+  res.render('meal-plans', { title: 'My Meal Plans', user: req.user });
+});
+
+// Route to render a single meal plan and its items
+app.get('/meal-plans/:id', isAuthenticated, async (req, res) => {
+  const mealPlanId = req.params.id;
+  const userId = (req.user as any).id;
+  try {
+    // Get the meal plan
+    const planResult = await pool.query('SELECT * FROM meal_plans WHERE id = $1 AND user_id = $2', [mealPlanId, userId]);
+    if (planResult.rows.length === 0) {
+      req.flash('error', 'Meal plan not found');
+      return res.redirect('/meal-plans');
+    }
+    
+    // Get both user's own recipes and favorited recipes for selection
+    const recipesQuery = `
+      SELECT r.id, r.title, 
+        CASE WHEN r.user_id = $1 THEN 'Your Recipe' ELSE 'Favorite' END AS recipe_type
+      FROM recipes r
+      WHERE r.user_id = $1 -- User's own recipes
+      UNION
+      SELECT r.id, r.title, 'Favorite' AS recipe_type
+      FROM recipes r
+      JOIN favorites f ON r.id = f.recipe_id
+      WHERE f.user_id = $1 -- User's favorite recipes
+      ORDER BY recipe_type, title
+    `;
+    const recipesResult = await pool.query(recipesQuery, [userId]);
+    
+    // Ensure dates are proper date objects before passing to template
+    const mealPlan = {
+      ...planResult.rows[0],
+      // Make sure dates are properly formatted
+      start_date: new Date(planResult.rows[0].start_date),
+      end_date: new Date(planResult.rows[0].end_date)
+    };
+    
+    res.render('meal-plan-detail', {
+      title: mealPlan.name,
+      mealPlan: mealPlan,
+      recipes: recipesResult.rows
+    });
+  } catch (error) {
+    req.flash('error', 'Failed to load meal plan');
+    res.redirect('/meal-plans');
+  }
+});
+
+// Register the recipe comments routes
+app.use('/recipes', recipeCommentsRoutes(pool));
 
 // Start the server
 app.listen(port, () => {

@@ -1,0 +1,567 @@
+<% /* src/views/meal-plan-detail.ejs - Meal Plan Detail UI */ %>
+<%- include('partials/header', { title: mealPlan.name }) %>
+<div class="container mt-4">
+  <div class="home-container">
+    <h1 class="main-title text-center mb-4"><%= mealPlan.name %></h1>
+    <p class="text-center">From <b><%= new Date(mealPlan.start_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %></b> to <b><%= new Date(mealPlan.end_date).toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' }) %></b></p>
+    <div class="badge bg-info text-white mb-2 p-2">
+      <%= Math.ceil((new Date(mealPlan.end_date) - new Date(mealPlan.start_date)) / (1000 * 60 * 60 * 24)) %> days of meal planning
+    </div>
+    <div class="text-end mb-3">
+      <a href="/meal-plans" class="btn btn-outline-secondary">Back to Meal Plans</a>
+    </div>
+    <h4>Planned Meals</h4>
+    <div id="mealPlanItems">
+      <!-- Items will be loaded here by client-side JS -->
+    </div>
+    <hr>
+    <h5>Add Recipe to Meal Plan</h5>
+    <p class="small text-muted">Note: You can only add recipes for dates within the meal plan's time frame.</p>
+    <form id="addMealPlanItemForm" class="row g-2">
+      <div class="col-md-3">
+        <input type="date" class="form-control" name="meal_date" required id="meal_date_input" 
+               min="<%= new Date(mealPlan.start_date).toISOString().split('T')[0] %>" 
+               max="<%= new Date(mealPlan.end_date).toISOString().split('T')[0] %>">
+      </div>
+      <div class="col-md-3">
+        <select class="form-select" name="meal_time" required>
+          <option value="">Meal Time</option>
+          <option value="breakfast">Breakfast</option>
+          <option value="lunch">Lunch</option>
+          <option value="dinner">Dinner</option>
+        </select>
+      </div>
+      <div class="col-md-4">
+        <select class="form-select" name="recipe_id" required>
+          <option value="">Select Recipe</option>
+          <% 
+          let lastType = '';
+          recipes.forEach(function(recipe) { 
+            // Add optgroup headers when recipe type changes
+            if (recipe.recipe_type !== lastType) {
+              if (lastType !== '') { %>
+                </optgroup>
+              <% }
+              lastType = recipe.recipe_type; 
+            %>
+              <optgroup label="<%= recipe.recipe_type %>">
+            <% } %>
+            <option value="<%= recipe.id %>"><%= recipe.title %></option>
+          <% }); 
+          // Close the last optgroup if there were any recipes
+          if (lastType !== '') { %>
+            </optgroup>
+          <% } %>
+        </select>
+      </div>
+      <div class="col-md-1">
+        <input type="number" class="form-control" name="servings" min="1" value="1" required>
+      </div>
+      <div class="col-md-1">
+        <button type="submit" class="btn btn-main w-100">Add</button>
+      </div>
+    </form>
+    <hr>
+    <h5>Shopping List</h5>
+    <div class="mb-3">
+      <button class="btn btn-main" id="generateShoppingListBtn">Generate Shopping List</button>
+    </div>
+    <div id="shoppingListContainer"></div>
+  </div>
+</div>
+<script>
+// Initialize the recipes data as a global variable to avoid JSON parsing issues
+let recipesData;
+try {
+  // Using proper JSON parsing with the raw data from the server
+  recipesData = JSON.parse('<%- JSON.stringify(recipes) %>'.replace(/&quot;/g, '"'));
+  if (!Array.isArray(recipesData)) {
+    console.error("Recipe data is not an array");
+    recipesData = [];
+  }
+} catch (e) {
+  console.error("Error parsing recipe data:", e);
+  recipesData = [];
+}
+
+const mealPlanId = '<%= mealPlan.id %>';
+
+// Format date to be more user friendly
+function formatDate(dateString) {
+  const date = new Date(dateString);
+  const today = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+  
+  // Check if the date is today or tomorrow
+  if (date.toDateString() === today.toDateString()) {
+    return 'Today';
+  } else if (date.toDateString() === tomorrow.toDateString()) {
+    return 'Tomorrow';
+  }
+  
+  // For other dates, show weekday and formatted date
+  return date.toLocaleDateString('en-US', { 
+    weekday: 'long', 
+    month: 'long', 
+    day: 'numeric'
+  });
+}
+
+// Format meal time with icons
+function formatMealTime(mealTime) {
+  let icon = '';
+  switch(mealTime) {
+    case 'breakfast':
+      icon = '<i class="bi bi-brightness-alt-high" title="Breakfast"></i>';
+      break;
+    case 'lunch':
+      icon = '<i class="bi bi-sun" title="Lunch"></i>';
+      break;
+    case 'dinner':
+      icon = '<i class="bi bi-moon-stars" title="Dinner"></i>';
+      break;
+    default:
+      icon = '<i class="bi bi-cup-hot" title="Snack"></i>';
+  }
+  // Capitalize the first letter of meal time
+  const formattedTime = mealTime.charAt(0).toUpperCase() + mealTime.slice(1);
+  return `${icon} ${formattedTime}`;
+}
+
+function loadMealPlanItems() {
+  fetch(`/api/meal-plans/${mealPlanId}/items`, { credentials: 'same-origin' })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to fetch meal plan items');
+      return res.json();
+    })
+    .then(items => {
+      const container = document.getElementById('mealPlanItems');
+      if (!items.length) {
+        container.innerHTML = '<div class="alert alert-info">No meals planned yet.</div>';
+        return;
+      }
+      
+      // Group items by date
+      const groupedByDate = {};
+      items.forEach(item => {
+        if (!groupedByDate[item.meal_date]) {
+          groupedByDate[item.meal_date] = [];
+        }
+        groupedByDate[item.meal_date].push(item);
+      });
+      
+      // Sort dates
+      const sortedDates = Object.keys(groupedByDate).sort();
+      
+      // Generate HTML
+      let html = '';
+      sortedDates.forEach(date => {
+        // Add date header
+        html += `
+          <div class="card mb-3">
+            <div class="card-header bg-light">
+              <h5 class="mb-0">${formatDate(date)}</h5>
+            </div>
+            <div class="card-body p-0">
+              <table class="table table-hover mb-0">
+                <thead class="table-light">
+                  <tr>
+                    <th>Meal Time</th>
+                    <th>Recipe</th>
+                    <th>Servings</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                ${groupedByDate[date].map(item => `
+                  <tr>
+                    <td>${formatMealTime(item.meal_time)}</td>
+                    <td>${getRecipeTitle(item.recipe_id)}</td>
+                    <td>${item.servings} serving${item.servings > 1 ? 's' : ''}</td>
+                    <td><button class="btn btn-danger btn-sm" onclick="deleteMealPlanItem('${item.id}')">Delete</button></td>
+                  </tr>
+                `).join('')}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        `;
+      });
+      
+      container.innerHTML = html;
+    })
+    .catch(err => {
+      console.error("Error loading meal plan items:", err);
+      document.getElementById('mealPlanItems').innerHTML = 
+        '<div class="alert alert-danger">Failed to load meal plan items. Please try refreshing the page.</div>';
+    });
+}
+function getRecipeTitle(recipeId) {
+  try {
+    if (!Array.isArray(recipesData)) {
+      console.error("Recipe data is not properly initialized or not an array");
+      return `Recipe ${recipeId.substring(0, 8)}...`;
+    }
+    
+    // Get recipes data that was pre-generated on server side
+    const r = recipesData.find(r => r.id === recipeId);
+    return r ? r.title : `Recipe ${recipeId.substring(0, 8)}...`;
+  } catch (e) {
+    console.error("Error finding recipe:", e);
+    return `Recipe ${recipeId.substring(0, 8)}...`;
+  }
+}
+document.getElementById('addMealPlanItemForm').onsubmit = function(e) {
+  e.preventDefault();
+  const form = e.target;
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData);
+  
+  // Validate form data
+  if (!data.meal_date) {
+    alert('Please select a date');
+    return;
+  }
+  if (!data.meal_time) {
+    alert('Please select a meal time');
+    return;
+  }
+  if (!data.recipe_id) {
+    alert('Please select a recipe');
+    return;
+  }
+  if (!data.servings || parseInt(data.servings) < 1) {
+    data.servings = 1; // Set default serving if invalid
+  }
+  
+  // Show loading state or disable form
+  const submitBtn = form.querySelector('button[type="submit"]');
+  const originalBtnText = submitBtn.innerHTML;
+  submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Adding...';
+  submitBtn.disabled = true;
+  
+  // No need for client-side date range validation since the HTML input element already
+  // restricts date selection with min/max attributes, and the server also validates dates
+  
+  fetch(`/api/meal-plans/${mealPlanId}/items`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(data)
+  })
+    .then(res => {
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          return res.json().then(errData => {
+            throw new Error(errData.details ? `${errData.error}: ${errData.details}` : errData.error || 'Failed to add item');
+          });
+        } else {
+          throw new Error('Failed to add item');
+        }
+      }
+      return res.json();
+    })
+    .then(() => {
+      form.reset();
+      loadMealPlanItems();
+    })
+    .catch(err => {
+      console.error('Error adding meal plan item:', err);
+      alert(err.message);
+    })
+    .finally(() => {
+      // Restore button state
+      submitBtn.innerHTML = originalBtnText;
+      submitBtn.disabled = false;
+    });
+};
+function deleteMealPlanItem(id) {
+  if (!confirm('Delete this meal?')) return;
+  fetch(`/api/meal-plans/${mealPlanId}/items/${id}`, {
+    method: 'DELETE',
+    credentials: 'same-origin'
+  })
+    .then(res => {
+      if (!res.ok) throw new Error('Failed to delete item');
+      loadMealPlanItems();
+    })
+    .catch(err => alert(err.message));
+}
+document.getElementById('generateShoppingListBtn').onclick = function() {
+  // Show loading state
+  const container = document.getElementById('shoppingListContainer');
+  const btn = document.getElementById('generateShoppingListBtn');
+  const originalBtnText = btn.innerHTML;
+  
+  container.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"><span class="visually-hidden">Loading...</span></div><p>Generating shopping list...</p></div>';
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Generating...';
+  btn.disabled = true;
+  
+  fetch(`/api/meal-plans/${mealPlanId}/shopping-list/generate`, { 
+    method: 'GET',
+    headers: {
+      'Accept': 'application/json',
+      'Cache-Control': 'no-cache'
+    },
+    credentials: 'same-origin' 
+  })
+    .then(res => {
+      if (!res.ok) {
+        if (res.status === 404) {
+          throw new Error('Meal plan not found');
+        } else if (res.status === 500) {
+          throw new Error('Server error while generating shopping list');
+        }
+        throw new Error(`Error ${res.status}: Failed to generate shopping list`);
+      }
+      return res.json();
+    })
+    .then(items => {
+      if (!items || !items.length) {
+        container.innerHTML = '<div class="alert alert-info">No ingredients found for this meal plan. Make sure to add recipes first.</div>';
+        return;
+      }
+      
+      // Format quantities to two decimal places when needed and standardize units
+      const formattedItems = items.map(item => {
+        const quantity = parseFloat(item.total_quantity);
+        // Format to at most 2 decimal places, avoid trailing zeros
+        const formattedQuantity = Number.isInteger(quantity) ? quantity : quantity.toFixed(2).replace(/\.?0+$/, '');
+        
+        // For units, we need to handle the possibility of commas from string_agg in SQL
+        const rawUnit = item.unit || '';
+        // Take the first value if we have a comma-separated list from string_agg
+        const firstUnit = rawUnit.split(',')[0].trim().toLowerCase();
+        
+        // Standardize units by trimming whitespace and lowercasing
+        const unit = firstUnit || '';
+        
+        // Standardize common unit abbreviations
+        const standardizedUnit = (() => {
+          if (!unit) return '';
+          
+          // Map of common unit abbreviations to their standard forms
+          const unitMap = {
+            'tbsp': 'tbsp',
+            'tbs': 'tbsp',
+            't': 'tbsp',
+            'tb': 'tbsp',
+            'tablespoon': 'tbsp',
+            'tablespoons': 'tbsp',
+            'tsp': 'tsp',
+            't': 'tsp',
+            'teaspoon': 'tsp',
+            'teaspoons': 'tsp',
+            'cup': 'cup',
+            'cups': 'cup',
+            'c': 'cup',
+            'oz': 'oz',
+            'ounce': 'oz',
+            'ounces': 'oz',
+            'fl oz': 'fl oz',
+            'fluid ounce': 'fl oz',
+            'fluid ounces': 'fl oz',
+            'lb': 'lb',
+            'pound': 'lb',
+            'pounds': 'lb',
+            'g': 'g',
+            'gram': 'g',
+            'grams': 'g',
+            'mg': 'mg',
+            'milligram': 'mg',
+            'milligrams': 'mg',
+            'kg': 'kg',
+            'kilogram': 'kg',
+            'kilograms': 'kg',
+            'ml': 'ml',
+            'milliliter': 'ml',
+            'milliliters': 'ml',
+            'l': 'l',
+            'liter': 'l',
+            'liters': 'l',
+            'pt': 'pt',
+            'pint': 'pt',
+            'pints': 'pt',
+            'qt': 'qt',
+            'quart': 'qt',
+            'quarts': 'qt',
+            'gal': 'gal',
+            'gallon': 'gal',
+            'gallons': 'gal',
+            'pinch': 'pinch',
+            'dash': 'dash',
+            'handful': 'handful',
+            'bunch': 'bunch',
+            'bunches': 'bunch',
+            'slice': 'slice',
+            'slices': 'slice',
+            'piece': 'piece',
+            'pieces': 'piece',
+            'clove': 'clove',
+            'cloves': 'clove',
+            'head': 'head',
+            'heads': 'head',
+            'stalk': 'stalk',
+            'stalks': 'stalk',
+            'sprig': 'sprig',
+            'sprigs': 'sprig',
+            'can': 'can',
+            'cans': 'can'
+          };
+          
+          return unitMap[unit] || unit;
+        })();
+        
+        return {
+          ...item,
+          formatted_quantity: formattedQuantity,
+          unit: standardizedUnit
+        };
+      });
+      
+      container.innerHTML = `
+        <div class="card">
+          <div class="card-header d-flex justify-content-between align-items-center">
+            <h5 class="mb-0">Shopping List</h5>
+            <button class="btn btn-sm btn-outline-secondary" onclick="printShoppingList()">Print List</button>
+          </div>
+          <div class="card-body" id="printableShoppingList">
+            <table class="table table-striped">
+              <thead><tr><th>Ingredient</th><th class="text-end">Amount</th></tr></thead>
+              <tbody>
+              ${formattedItems.map(item => {
+                // Capitalize ingredient name for better presentation
+                const capitalizedName = item.name.charAt(0).toUpperCase() + item.name.slice(1);
+                
+                // Format the combined quantity and unit for better readability
+                const quantityDisplay = item.formatted_quantity;
+                const unitDisplay = item.unit ? item.unit : '';
+                const amountDisplay = unitDisplay ? `${quantityDisplay} ${unitDisplay}` : quantityDisplay;
+                
+                return `
+                  <tr>
+                    <td>${capitalizedName}</td>
+                    <td class="text-end">${amountDisplay}</td>
+                  </tr>
+                `;
+              }).join('')}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      `;
+    })
+    .catch(err => {
+      console.error("Error generating shopping list:", err);
+      
+      // Improved error handling
+      let errorMessage = err.message || 'Failed to generate shopping list. Please try again.';
+      
+      if (err.response) {
+        // Try to get JSON error details if available
+        err.response.json()
+          .then(data => {
+            console.log('Error response data:', data);
+            if (data && data.error) {
+              let errorHtml = `<div class="alert alert-danger">
+                <p><strong>Error:</strong> ${data.error}</p>`;
+                
+              if (data.details) {
+                errorHtml += `<p><small>Details: ${data.details}</small></p>`;
+              }
+              
+              errorHtml += `</div>`;
+              container.innerHTML = errorHtml;
+            } else {
+              container.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
+            }
+          })
+          .catch(jsonErr => {
+            // If we can't parse JSON from the response
+            console.error("Could not parse error response:", jsonErr);
+            container.innerHTML = `<div class="alert alert-danger">${errorMessage}</div>`;
+          });
+      } else {
+        // No structured response available
+        container.innerHTML = `<div class="alert alert-danger">
+          <p>${errorMessage}</p>
+          <p><small>Try adding some recipes to your meal plan first.</small></p>
+        </div>`;
+      }
+    })
+    .finally(() => {
+      // Always restore button state
+      btn.innerHTML = originalBtnText;
+      btn.disabled = false;
+    });
+};
+
+// Add print function for shopping list
+function printShoppingList() {
+  const printContents = document.getElementById('printableShoppingList').innerHTML;
+  const originalContents = document.body.innerHTML;
+  const mealPlanName = '<%= mealPlan.name %>';
+  const startDate = '<%= new Date(mealPlan.start_date).toLocaleDateString() %>';
+  const endDate = '<%= new Date(mealPlan.end_date).toLocaleDateString() %>';
+  
+  document.body.innerHTML = `
+    <div style="padding: 20px; font-family: Arial, sans-serif;">
+      <h1 style="text-align: center; margin-bottom: 10px;">Shopping List for ${mealPlanName}</h1>
+      <p style="text-align: center; margin-bottom: 20px; color: #666;">
+        From ${startDate} to ${endDate}
+      </p>
+      <div style="max-width: 800px; margin: 0 auto;">
+        ${printContents}
+      </div>
+      <div style="text-align: center; margin-top: 30px; font-size: 12px; color: #888;">
+        Generated from Share My Recipe on ${new Date().toLocaleDateString()}
+      </div>
+    </div>
+  `;
+  
+  // Add print-specific styles
+  const style = document.createElement('style');
+  style.innerHTML = `
+    @media print {
+      table { width: 100%; border-collapse: collapse; }
+      th { padding: 8px; border-bottom: 2px solid #ddd; }
+      th:first-child { text-align: left; }
+      th:last-child { text-align: right; }
+      td { padding: 8px; border-bottom: 1px solid #eee; }
+      td:last-child { text-align: right; }
+      tr:nth-child(even) { background-color: #f9f9f9; }
+    }
+  `;
+  document.head.appendChild(style);
+  
+  window.print();
+  document.body.innerHTML = originalContents;
+  
+  // Re-add event listeners after restoring the page
+  document.addEventListener('DOMContentLoaded', loadMealPlanItems);
+  document.getElementById('addMealPlanItemForm').onsubmit = addMealPlanItemHandler;
+  document.getElementById('generateShoppingListBtn').onclick = generateShoppingListHandler;
+}
+
+// Store original handlers
+const addMealPlanItemHandler = document.getElementById('addMealPlanItemForm').onsubmit;
+const generateShoppingListHandler = document.getElementById('generateShoppingListBtn').onclick;
+
+// Load meal plan items when the page loads
+document.addEventListener('DOMContentLoaded', function() {
+  loadMealPlanItems();
+  
+  // Set today's date as the default date in the form
+  const today = new Date();
+  const year = today.getFullYear();
+  const month = String(today.getMonth() + 1).padStart(2, '0');
+  const day = String(today.getDate()).padStart(2, '0');
+  const dateInput = document.getElementById('meal_date_input');
+  if (dateInput) {
+    dateInput.value = `${year}-${month}-${day}`;
+  }
+});
+</script>
+<%- include('partials/footer') %>
