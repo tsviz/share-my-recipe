@@ -422,4 +422,28 @@
     <changeSet id="2025-05-17-meal-planning" author="tsvi">
         <sqlFile path="src/db/migrations/create-meal-planning-tables.sql" relativeToChangelogFile="false"/>
     </changeSet>
+
+    <changeSet id="2025-06-02-recipe-comments" author="tsvi">
+        <sqlFile path="src/db/migrations/create-recipe-comments-table.sql" relativeToChangelogFile="false"/>
+    </changeSet>
+
+    <changeSet id="2025-01-16-recipe-ratings-data" author="tsvi">
+        <comment>Load initial recipe ratings data</comment>
+        <loadData
+            file="src/db/migrations/recipe_ratings_data.csv"
+            relativeToChangelogFile="false"
+            tableName="recipe_comments"
+            primaryKey="recipe_id,user_id">
+            <column name="recipe_id" type="STRING"/>
+            <column name="user_id" type="STRING"/>
+            <column name="comment" type="STRING"/>
+            <column name="rating" type="NUMERIC"/>
+            <column name="created_at" type="DATETIME"/>
+        </loadData>
+    </changeSet>
+
+    <changeSet id="2025-06-02-glossary-vegetables" author="copilot">
+        <comment>Populate glossary so 'vegetables' category expands to all common vegetable ingredients</comment>
+        <sqlFile path="populate-glossary-vegetables.sql" relativeToChangelogFile="true"/>
+    </changeSet>
 </databaseChangeLog>

@@ -86,10 +86,6 @@
         .recipe-card:hover {
             transform: translateY(-5px);
         }
-        .recipe-img {
-            height: 180px;
-            object-fit: cover;
-        }
         .btn-main {
             background: linear-gradient(90deg, #ffb347 0%, #ffcc33 100%);
             color: #fff;
@@ -207,7 +203,6 @@
                     <div class="col">
                         <div class="card recipe-card h-100">
                             <div class="position-relative">
-                                <img src="https://source.unsplash.com/random/300x200/?<%= encodeURIComponent(recipe.title.split(' ')[0]) %>,food" class="card-img-top recipe-img" alt="<%= recipe.title %>">
                                 <% if (recipe.category_id) { %>
                                     <div class="recipe-badge"><%= recipe.category_name || 'Uncategorized' %></div>
                                 <% } %>

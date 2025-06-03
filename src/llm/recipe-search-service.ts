@@ -573,7 +573,14 @@ export class RecipeSearchService {
       // === LLM-driven SQL WHERE clause generation ===
       const llmWhereClause = await this.getSqlWhereClauseFromLLM(userQuery);
       if (llmWhereClause) {
-        let sqlQuery = `SELECT r.id, r.title, r.description, r.cuisine, r.category_id FROM recipes r WHERE ${llmWhereClause} ORDER BY r.popularity DESC LIMIT 20`;
+        let sqlQuery = `SELECT r.id, r.title, r.description, r.cuisine, r.category_id,
+          COALESCE(AVG(rc.rating), 0) as average_rating,
+          COUNT(rc.rating) as rating_count
+          FROM recipes r 
+          LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
+          WHERE ${llmWhereClause} 
+          GROUP BY r.id, r.title, r.description, r.cuisine, r.category_id
+          ORDER BY r.popularity DESC LIMIT 20`;
         console.log('Executing LLM-driven SQL query:', sqlQuery);
         let result;
         try {
@@ -654,8 +661,11 @@ export class RecipeSearchService {
 
       // Build a SQL query that prioritizes the requested cuisine
       let sqlQuery = `
-        SELECT r.id, r.title, r.description, r.cuisine, r.category_id
+        SELECT r.id, r.title, r.description, r.cuisine, r.category_id,
+               COALESCE(AVG(rc.rating), 0) as average_rating,
+               COUNT(rc.rating) as rating_count
         FROM recipes r
+        LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
         WHERE 1=1
       `;
       const sqlParams: any[] = [];
@@ -725,9 +735,10 @@ export class RecipeSearchService {
       }
 
       // Add filters for main dish if specified
-      if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
+      const resolvedAiAnalysis = await aiAnalysis;
+      if (resolvedAiAnalysis.mainDish && resolvedAiAnalysis.mainDish.length > 0) {
         const dishConditions: string[] = [];
-        for (const dish of aiAnalysis.mainDish) {
+        for (const dish of resolvedAiAnalysis.mainDish) {
           dishConditions.push(`(r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`);
           sqlParams.push(`%${dish}%`);
           paramIndex++;
@@ -736,6 +747,9 @@ export class RecipeSearchService {
           sqlQuery += ` AND (${dishConditions.join(' OR ')})`;
         }
       }
+
+      // Add GROUP BY clause for rating aggregation
+      sqlQuery += ` GROUP BY r.id, r.title, r.description, r.cuisine, r.category_id ORDER BY r.id DESC`;
 
       // Execute the SQL query and handle results
       const result = await this.pool.query(sqlQuery, sqlParams);
@@ -806,8 +820,11 @@ export class RecipeSearchService {
     console.log('Fallback search executed for query:', query);
     const aiAnalysis = this.createFallbackAnalysis(query);
     let sqlQuery = `
-      SELECT r.id, r.title, r.description, r.cuisine, r.category_id
+      SELECT r.id, r.title, r.description, r.cuisine, r.category_id,
+             COALESCE(AVG(rc.rating), 0) as average_rating,
+             COUNT(rc.rating) as rating_count
       FROM recipes r
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE 1=1
     `;
     const sqlParams: any[] = [];
@@ -818,14 +835,17 @@ export class RecipeSearchService {
       sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
       sqlParams.push(`%${requestedCuisine}%`);
       paramIndex++;
-    } else if (aiAnalysis.cuisines.length > 0) {
-      // Remove any excluded cuisines from inclusion list
-      const filteredCuisines = aiAnalysis.cuisines.filter((c: string) => !excludeCuisines.includes(c));
-      if (filteredCuisines.length > 0) {
-        const cuisineConditions: string[] = filteredCuisines.map((cuisine: string, index: number): string => `r.cuisine ILIKE $${paramIndex + index}`);
-        sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
-        sqlParams.push(...(filteredCuisines as string[]).map((cuisine: string) => `%${cuisine}%`));
-        paramIndex += filteredCuisines.length;
+    } else {
+      const resolvedAiAnalysis = await aiAnalysis;
+      if (resolvedAiAnalysis.cuisines.length > 0) {
+        // Remove any excluded cuisines from inclusion list
+        const filteredCuisines = resolvedAiAnalysis.cuisines.filter((c: string) => !excludeCuisines.includes(c));
+        if (filteredCuisines.length > 0) {
+          const cuisineConditions: string[] = filteredCuisines.map((cuisine: string, index: number): string => `r.cuisine ILIKE $${paramIndex + index}`);
+          sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
+          sqlParams.push(...(filteredCuisines as string[]).map((cuisine: string) => `%${cuisine}%`));
+          paramIndex += filteredCuisines.length;
+        }
       }
     }
     // Exclude cuisines in fallback, but only if not all would be excluded
@@ -847,7 +867,7 @@ export class RecipeSearchService {
         query.toLowerCase().includes('jewish recipe') || 
         query.toLowerCase().includes('jewish cuisine')) {
       // If we haven't already added Jewish cuisine condition
-      if (!aiAnalysis.cuisines.includes('Jewish')) {
+      if (!(await aiAnalysis).cuisines.includes('Jewish')) {
         sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
         sqlParams.push('%Jewish%');
         paramIndex++;
@@ -856,9 +876,10 @@ export class RecipeSearchService {
     }
 
     // Prioritize mainDish if specified
-    if (aiAnalysis.mainDish && aiAnalysis.mainDish.length > 0) {
+    const resolvedAiAnalysis = await aiAnalysis;
+    if (resolvedAiAnalysis.mainDish && resolvedAiAnalysis.mainDish.length > 0) {
       const dishConditions: string[] = [];
-      for (const dish of aiAnalysis.mainDish) {
+      for (const dish of resolvedAiAnalysis.mainDish) {
         dishConditions.push(`(r.title ILIKE $${paramIndex} OR r.description ILIKE $${paramIndex})`);
         sqlParams.push(`%${dish}%`);
         paramIndex++;
@@ -868,8 +889,9 @@ export class RecipeSearchService {
       }
     }
 
-    // Add ordering logic to prioritize relevant results
+    // Add GROUP BY clause for rating aggregation, then ordering logic
     sqlQuery += `
+      GROUP BY r.id, r.title, r.description, r.cuisine, r.category_id
       ORDER BY 
         CASE
           WHEN r.title ILIKE $${paramIndex} THEN 1
@@ -1140,6 +1162,8 @@ export class RecipeSearchService {
       // Build a more comprehensive search
       let sqlQuery = `
         SELECT DISTINCT r.id, r.title, r.description, r.cuisine, r.category_id,
+          COALESCE(AVG(rc.rating), 0) as average_rating,
+          COUNT(rc.rating) as rating_count,
           CASE 
             WHEN r.title ILIKE $1 THEN 1
             WHEN EXISTS (
@@ -1151,6 +1175,7 @@ export class RecipeSearchService {
             ELSE 4
           END AS match_rank
         FROM recipes r
+        LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
         WHERE 1=1
       `;
       
@@ -1208,8 +1233,8 @@ export class RecipeSearchService {
         )`;
       }
       
-      // Add ordering and limit
-      sqlQuery += ' ORDER BY match_rank, r.id DESC LIMIT 20';
+      // Add GROUP BY clause for rating aggregation, then ordering and limit
+      sqlQuery += ' GROUP BY r.id, r.title, r.description, r.cuisine, r.category_id ORDER BY match_rank, r.id DESC LIMIT 20';
       
       // Build params array with the original query, excluded terms, and individual positive terms
       const params = [`%${query}%`, ...excludedTerms.map(term => `%${term}%`), ...includeTerms.map(term => `%${term}%`)];
@@ -1558,7 +1583,7 @@ export class RecipeSearchService {
   /**
    * Create a fallback analysis when parsing fails
    */
-  private createFallbackAnalysis(userQuery: string): any {
+  private async createFallbackAnalysis(userQuery: string): Promise<any> {
     console.log('Creating fallback analysis from query');
     const query = userQuery.toLowerCase();
     
@@ -1673,19 +1698,20 @@ export class RecipeSearchService {
     
     // Extract ingredients the user doesn't want
     const negativePatterns = [
-      /(?:i (?:don't|dont|do not) (?:like|want)|without|no|not|exclude)(?:\s+\w+)?\s+(\w+)/gi,
-      /(?:no)(?:\s+\w+)?\s+(\w+)(?:\s+(?:please|thanks))?/gi
+      /(?:i (?:don't|dont|do not) (?:like|want|eat)|without|no|not|exclude|avoid)\s+([a-zA-Z][a-zA-Z\s]*)/gi,
+      /(?:no|without|exclude|avoid)\s+([a-zA-Z][a-zA-Z\s]*)/gi
     ];
-    
     for (const pattern of negativePatterns) {
       const matches = [...query.matchAll(pattern)];
       if (matches.length > 0) {
         matches.forEach(match => {
-          if (match[1] && match[1].length > 2) {
-            const ingredient = match[1].toLowerCase();
-            if (!excludeIngredients.includes(ingredient)) {
-              excludeIngredients.push(ingredient);
-            }
+          if (match[1]) {
+            match[1].split(/,| and | or /i).forEach(raw => {
+              const ingredient = raw.trim().toLowerCase();
+              if (ingredient.length > 2 && !excludeIngredients.includes(ingredient)) {
+                excludeIngredients.push(ingredient);
+              }
+            });
           }
         });
       }
@@ -1753,7 +1779,7 @@ export class RecipeSearchService {
     const refinedCuisines = cuisines.filter(cuisine => cuisine === 'Jewish');
     
     // Create basic analysis object
-    const result = {
+    let result = {
       mainDish: mainDish,
       cuisines: refinedCuisines,
       includeIngredients: includeIngredients,
@@ -1762,7 +1788,36 @@ export class RecipeSearchService {
       cookingMethods: [],
       explanation: "Found recipes based on your preferences"
     };
-    
+    // Expand category terms in includeIngredients (e.g. 'vegetables')
+    if (result.includeIngredients && result.includeIngredients.length > 0) {
+      const expanded: string[] = [];
+      for (const ing of result.includeIngredients) {
+        // eslint-disable-next-line no-await-in-loop
+        const resolved = await this.glossaryService.resolveCategory(ing);
+        if (resolved && resolved.length > 0) {
+          expanded.push(...resolved);
+        } else {
+          expanded.push(ing);
+        }
+      }
+      // Remove duplicates
+      result.includeIngredients = [...new Set(expanded)];
+    }
+    // Expand category terms in excludeIngredients (e.g. 'noodles')
+    if (result.excludeIngredients && result.excludeIngredients.length > 0) {
+      const expanded: string[] = [];
+      for (const ing of result.excludeIngredients) {
+        // eslint-disable-next-line no-await-in-loop
+        const resolved = await this.glossaryService.resolveCategory(ing);
+        if (resolved && resolved.length > 0) {
+          expanded.push(...resolved);
+        } else {
+          expanded.push(ing);
+        }
+      }
+      // Remove duplicates
+      result.excludeIngredients = [...new Set(expanded)];
+    }
     console.log('Created fallback analysis from query:', result);
     return result;
   }

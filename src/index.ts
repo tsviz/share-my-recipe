@@ -23,6 +23,7 @@ import { registerUser, updateUserProfile, changeUserPassword, isAuthenticated, i
 import { mealPlanRoutes } from './routes/mealPlanRoutes';
 import { mealPlanItemRoutes } from './routes/mealPlanItemRoutes';
 import { shoppingListRoutes } from './routes/shoppingListRoutes';
+import { recipeCommentsRoutes } from './routes/recipeCommentsRoutes';
 
 const app = express();
 const port = 3000;
@@ -296,14 +297,17 @@ app.get('/profile/:userId', async (req, res) => {
     const user = userResult.rows[0];
     
     // Get user's recipes
-    const recipesResult = await pool.query(
-      `SELECT r.*, c.name as category_name 
-       FROM recipes r 
-       LEFT JOIN categories c ON r.category_id = c.id 
-       WHERE r.user_id = $1 
-       ORDER BY r.id DESC`,
-      [userId]
-    );
+    const recipesResult = await pool.query(`
+      SELECT r.*, c.name as category_name,
+        COALESCE(AVG(rc.rating), 0) as average_rating,
+        COUNT(rc.rating) as rating_count
+      FROM recipes r
+      LEFT JOIN categories c ON r.category_id = c.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
+      WHERE r.user_id = $1
+      GROUP BY r.id, c.name
+      ORDER BY r.id DESC
+    `, [userId]);
     
     // Get count of user's favorite recipes
     const favoritesResult = await pool.query(
@@ -328,7 +332,7 @@ app.get('/profile/:userId', async (req, res) => {
 });
 
 // New route to display a user's profile, their recipes, and their favorite recipes
-app.get('/users/:id', async (req, res) => {
+app.get('/users/:id', isAuthenticated, async (req, res) => {
   const userId = req.params.id;
   try {
     // Fetch user info
@@ -341,22 +345,31 @@ app.get('/users/:id', async (req, res) => {
 
     // Fetch user's own recipes
     const recipesResult = await pool.query(`
-      SELECT r.*, c.name as category_name
+      SELECT r.*, c.name as category_name,
+        COALESCE(AVG(rc.rating), 0) as average_rating,
+        COUNT(rc.rating) as rating_count
       FROM recipes r
       LEFT JOIN categories c ON r.category_id = c.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE r.user_id = $1
+      GROUP BY r.id, c.name
       ORDER BY r.id DESC
     `, [userId]);
     const recipes = recipesResult.rows;
 
     // Fetch user's favorite recipes
     const favResult = await pool.query(`
-      SELECT r.*, c.name as category_name, u.username
+      SELECT r.*, c.name as category_name, u.username,
+        f.created_at,
+        COALESCE(AVG(rc.rating), 0) as average_rating,
+        COUNT(rc.rating) as rating_count
       FROM favorites f
       JOIN recipes r ON f.recipe_id = r.id
       LEFT JOIN categories c ON r.category_id = c.id
       JOIN users u ON r.user_id = u.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE f.user_id = $1
+      GROUP BY r.id, c.name, u.username, f.created_at
       ORDER BY f.created_at DESC
     `, [userId]);
     const favoriteRecipes = favResult.rows;
@@ -774,7 +787,32 @@ app.get('/recipes/:id', async (req, res) => {
     }
     recipe.isFavorited = isFavorited;
 
-    res.render('recipe-detail', { title: recipe.title, recipe, user: req.user });
+    // Fetch comments and ratings for this recipe
+    const commentsResult = await pool.query(
+      `SELECT rc.*, u.username FROM recipe_comments rc
+       JOIN users u ON rc.user_id = u.id
+       WHERE rc.recipe_id = $1
+       ORDER BY rc.created_at DESC`,
+      [recipeId]
+    );
+    const comments = commentsResult.rows;
+
+    // Calculate average rating (if any comments exist)
+    let averageRating = null;
+    if (comments.length > 0) {
+      const sum = comments.reduce((acc, c) => acc + (c.rating || 0), 0);
+      averageRating = (sum / comments.length).toFixed(1);
+    }
+
+    res.render('recipe-detail', {
+      title: recipe.title,
+      recipe,
+      user: req.user,
+      comments,
+      averageRating,
+      isAuthenticated: !!req.user,
+      formatDate: (date: any) => new Date(date).toLocaleString()
+    });
   } catch (error) {
     console.error(error);
     req.flash('error', 'Failed to load recipe');
@@ -791,11 +829,14 @@ app.get('/recipes', async (req, res) => {
     const pageSize = 15;
     const offset = (page - 1) * pageSize;
     
-    // Simpler query structure to reduce potential points of failure
+    // Query with average rating calculation
     let query = `
-      SELECT r.*, u.username
+      SELECT r.*, u.username,
+             COALESCE(AVG(rc.rating), 0) as average_rating,
+             COUNT(rc.rating) as rating_count
       FROM recipes r
       JOIN users u ON r.user_id = u.id
+      LEFT JOIN recipe_comments rc ON r.id = rc.recipe_id
       WHERE 1=1
     `;
     
@@ -819,6 +860,9 @@ app.get('/recipes', async (req, res) => {
       params.push(`%${cuisine}%`);
       paramIndex++;
     }
+    
+    // Add GROUP BY clause for the aggregate functions
+    query += ` GROUP BY r.id, u.username`;
     
     // Count total recipes for pagination
     const countQuery = `SELECT COUNT(*) FROM (${query}) AS count_query`;
@@ -1068,6 +1112,9 @@ app.get('/meal-plans/:id', isAuthenticated, async (req, res) => {
     res.redirect('/meal-plans');
   }
 });
+
+// Register the recipe comments routes
+app.use('/recipes', recipeCommentsRoutes(pool));
 
 // Start the server
 app.listen(port, () => {
