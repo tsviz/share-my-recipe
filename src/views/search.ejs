@@ -217,6 +217,29 @@
             <div class="card-body">
               <h5 class="card-title text-primary"><%= recipe.title %></h5>
               <p class="card-text text-muted" style="font-size: 1em; line-height: 1.6; color: #333;"><%= recipe.description %></p>
+              
+              <!-- Small rating display -->
+              <% if (recipe.average_rating && recipe.average_rating > 0) { %>
+                <div class="rating-small mb-2" style="font-size: 0.75rem;">
+                  <% 
+                    const avgRating = parseFloat(recipe.average_rating);
+                    const fullStars = Math.floor(avgRating);
+                    const hasHalfStar = avgRating % 1 >= 0.5;
+                    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+                  %>
+                  <% for (let i = 0; i < fullStars; i++) { %>
+                    <i class="bi bi-star-fill text-warning"></i>
+                  <% } %>
+                  <% if (hasHalfStar) { %>
+                    <i class="bi bi-star-half text-warning"></i>
+                  <% } %>
+                  <% for (let i = 0; i < emptyStars; i++) { %>
+                    <i class="bi bi-star text-muted"></i>
+                  <% } %>
+                  <span class="text-muted ms-1"><%= avgRating % 1 === 0 ? Math.round(avgRating) : avgRating.toFixed(1) %>/5</span>
+                </div>
+              <% } %>
+              
               <p class="text-muted" style="margin-top: 10px;"><small><strong>Cuisine:</strong> <%= recipe.cuisine || 'Not specified' %></small></p>
               <a href="/recipes/<%= recipe.id %>?page=search<%= locals.about ? '&search=' + encodeURIComponent(locals.about) : '' %>" 
                  class="btn btn-outline-primary btn-sm recipe-link" 

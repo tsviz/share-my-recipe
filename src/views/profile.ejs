@@ -122,6 +122,146 @@
 
 <div class="container mt-4 mb-5">
     <div class="main-container">
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= user.username %>'s Profile - Recipe Sharing</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            min-height: 100vh;
+        }
+        .profile-header {
+            background-image: url('https://images.unsplash.com/photo-1547592180-85f173990554?auto=format&fit=crop&w=1500&q=80');
+            background-size: cover;
+            background-position: center;
+            height: 200px;
+            position: relative;
+            border-radius: 0.5rem;
+            margin-bottom: 60px;
+        }
+        /* Back to Home button styles */
+        .back-home-button {
+            background: linear-gradient(90deg, #ffb347 0%, #ffcc33 100%);
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-weight: bold;
+            box-shadow: 0 4px 15px rgba(255, 179, 71, 0.4);
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            border: none;
+        }
+        
+        .back-home-button:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px rgba(255, 179, 71, 0.6);
+            color: white;
+        }
+        
+        .back-home-button::after {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.3), transparent);
+            transform: translateX(-100%);
+        }
+        
+        .back-home-button:hover::after {
+            animation: shine 1.5s infinite;
+        }
+        
+        @keyframes shine {
+            to {
+                transform: translateX(100%);
+            }
+        }
+        .profile-img {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            border: 4px solid #fff;
+            position: absolute;
+            bottom: -60px;
+            left: 50%;
+            transform: translateX(-50%);
+            background-color: #fff;
+            object-fit: cover;
+        }
+        .profile-info {
+            text-align: center;
+            padding-top: 70px;
+        }
+        .recipe-card {
+            border-radius: 1rem;
+            overflow: hidden;
+            transition: transform 0.3s;
+            height: 100%;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .recipe-card:hover {
+            transform: translateY(-5px);
+        }
+        .btn-main {
+            background: linear-gradient(90deg, #ffb347 0%, #ffcc33 100%);
+            color: #fff;
+            border: none;
+            box-shadow: 0 2px 8px rgba(255, 140, 0, 0.15);
+            transition: all 0.2s;
+        }
+        .btn-main:hover {
+            background: linear-gradient(90deg, #ffcc33 0%, #ffb347 100%);
+            transform: translateY(-1px);
+        }
+        .btn-outline-main {
+            color: #ff8c00;
+            border-color: #ff8c00;
+        }
+        .btn-outline-main:hover {
+            background-color: #ff8c00;
+            color: #fff;
+        }
+        .stats-container {
+            background-color: #fff;
+            border-radius: 1rem;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+            padding: 1.5rem;
+            margin-bottom: 2rem;
+        }
+        .stat-item {
+            text-align: center;
+        }
+        .stat-value {
+            font-size: 1.75rem;
+            font-weight: bold;
+            color: #ff8c00;
+        }
+        .stat-label {
+            color: #6c757d;
+            font-size: 0.9rem;
+        }
+        .recipe-badge {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background-color: rgba(255, 255, 255, 0.9);
+            border-radius: 1rem;
+            padding: 0.25rem 0.75rem;
+            font-size: 0.8rem;
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5 mb-5">
         <!-- Profile Header -->
         <div class="profile-header">
             <% if (user.profile_image) { %>
@@ -196,6 +336,10 @@
                             <% } %>
                             <div class="recipe-count-badge">
                                 Recipe #<%= recipe.id %>
+                            <div class="position-relative">
+                                <% if (recipe.category_id) { %>
+                                    <div class="recipe-badge"><%= recipe.category_name || 'Uncategorized' %></div>
+                                <% } %>
                             </div>
                             <div class="card-body d-flex flex-column">
                                 <h5 class="card-title"><%= recipe.title %></h5>
