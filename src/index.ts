@@ -93,7 +93,7 @@ app.get('/', (req, res) => {
 
 // Authentication Routes
 app.get('/login', isNotAuthenticated, (req, res) => {
-  res.render('login');
+  res.render('login', { title: 'Login - Share My Recipe' });
 });
 
 app.post('/login', isNotAuthenticated, passport.authenticate('local', {
@@ -103,7 +103,7 @@ app.post('/login', isNotAuthenticated, passport.authenticate('local', {
 }));
 
 app.get('/register', isNotAuthenticated, (req, res) => {
-  res.render('register');
+  res.render('register', { title: 'Register - Share My Recipe' });
 });
 
 app.post('/register', isNotAuthenticated, async (req, res) => {
@@ -174,7 +174,8 @@ app.get('/dashboard', isAuthenticated, async (req, res) => {
       [user.id]
     );
     
-    res.render('profile', {
+    res.render('dashboard', {
+      title: 'Dashboard - Share My Recipe',
       user: user,
       recipes: recipesResult.rows,
       favoriteCount: parseInt(favoritesResult.rows[0].count),
@@ -200,7 +201,10 @@ app.get('/profile/edit', isAuthenticated, (req, res) => {
     req.flash('error', 'User not found');
     return res.redirect('/login');
   }
-  res.render('edit-profile', { user: req.user });
+  res.render('edit-profile', { 
+    title: 'Edit Profile - Share My Recipe',
+    user: req.user 
+  });
 });
 
 // Set up multer for profile image uploads
@@ -280,6 +284,7 @@ app.get('/profile/:userId', async (req, res) => {
     const isOwnProfile = req.isAuthenticated() && (req.user as any).id === userId;
     
     res.render('profile', {
+      title: `${user.username}'s Profile - Share My Recipe`,
       user: user,
       recipes: recipesResult.rows,
       favoriteCount: parseInt(favoritesResult.rows[0].count),
@@ -499,7 +504,40 @@ app.post('/recipes/:id/unfavorite', isAuthenticated, async (req, res) => {
 
 // IMPORTANT: More specific routes come before general routes
 // Route to render the "Search Recipes" page
-app.get('/recipes/search', (req, res) => {
+app.get('/recipes/search', async (req, res) => {
+  const searchQuery = req.query.q as string;
+  
+  // If we have a search query, automatically perform the search
+  if (searchQuery && typeof searchQuery === 'string') {
+    try {
+      console.log("=== RESTORING SEARCH RESULTS ===");
+      console.log("Search query:", searchQuery);
+
+      const { recipes, positiveVibe, aiExplanation } = await recipeSearchService.searchRecipesWithPositiveVibe(searchQuery);
+      const recommendations = recipes.slice(0, 12);
+
+      console.log(`Restored search returned ${recommendations.length} matching recipes`);
+
+      return res.render('search', {
+        about: searchQuery,
+        recommendations,
+        aiExplanation,
+        positiveVibe,
+        title: 'Personalized Recipe Recommendations',
+        ai_enabled: true
+      });
+    } catch (e) {
+      console.error("Error restoring search results:", e);
+      return res.render('search', {
+        about: searchQuery,
+        recommendations: [],
+        title: 'Personalized Recipe Recommendations',
+        ai_enabled: true
+      });
+    }
+  }
+
+  // Otherwise show empty search page
   res.render('search', { 
     title: 'Personalized Recipe Recommendations',
     ai_enabled: true
@@ -512,54 +550,46 @@ const recipeSearchService = new RecipeSearchService(pool);
 // Update the search endpoint to use AI-powered search
 app.post('/recipes/search', async (req, res) => {
   const about = req.body.about || '';
-  let recommendations = [];
-  let aiExplanation = ''; // Will hold the AI's explanation of what it understood
-  let positiveVibe = ''; // Will hold the AI's positive vibe comment
 
   try {
     console.log("=== USER PREFERENCE DETECTION ===");
     console.log("User input:", about);
 
-    // Use the AI-powered search service
-    const searchResults = await recipeSearchService.searchRecipes(about);
+    // Use the AI-powered search service with combined functionality
+    const { recipes, positiveVibe, aiExplanation } = await recipeSearchService.searchRecipesWithPositiveVibe(about);
 
-    // Extract AI explanation if available
-    if (searchResults.length > 0 && searchResults[0].ai_analysis) {
-      aiExplanation = searchResults[0].ai_analysis;
-      // Remove the ai_analysis field from results to avoid confusion in the view
-      searchResults.forEach((recipe: { ai_analysis?: string }) => delete recipe.ai_analysis);
-    }
+    console.log(`AI search returned ${recipes.length} matching recipes`);
 
-    console.log(`AI search returned ${searchResults.length} matching recipes`);
-
-    // Limit to 10 recommendations
-    recommendations = searchResults.slice(0, 12);
-
-    // Generate a positive vibe comment
-    positiveVibe = await recipeSearchService.generatePositiveVibe(about, searchResults);
+    // Limit to 12 recommendations
+    const recommendations = recipes.slice(0, 12);
 
     if (recommendations.length === 0) {
       req.flash('info', 'No recipes match your preferences. Try adjusting your requirements.');
     }
+
+    // Final check: log all recommendations
+    console.log("=== FINAL RECOMMENDATIONS ===");
+    recommendations.forEach((recipe: { title: string; description?: string }) => {
+      console.log(`- ${recipe.title} (${recipe.description || 'No description'})`);
+    });
+
+    res.render('search', {
+      about,
+      recommendations,
+      aiExplanation,
+      positiveVibe,
+      title: 'Personalized Recipe Recommendations',
+      ai_enabled: true
+    });
   } catch (e) {
     console.error("Error in AI recipe recommendations:", e);
-    recommendations = [];
+    res.render('search', {
+      about,
+      recommendations: [],
+      title: 'Personalized Recipe Recommendations',
+      ai_enabled: true
+    });
   }
-
-  // Final check: log all recommendations
-  console.log("=== FINAL RECOMMENDATIONS ===");
-  recommendations.forEach((recipe: { title: string; description?: string }) => {
-    console.log(`- ${recipe.title} (${recipe.description || 'No description'})`);
-  });
-
-  res.render('search', {
-    about,
-    recommendations,
-    aiExplanation,
-    positiveVibe,
-    title: 'Personalized Recipe Recommendations',
-    ai_enabled: true
-  });
 });
 
 // Route to render the "Create Recipe" page
@@ -740,7 +770,132 @@ app.get('/recipes/:id', async (req, res) => {
     }
     recipe.isFavorited = isFavorited;
 
-    res.render('recipe-detail', { title: recipe.title, recipe, user: req.user });
+    // Smart back button logic - determine the source page
+    const referrer = req.get('Referer') || '';
+    const queryPage = req.query.page as string; // Check if page info is passed via query param
+    const searchQuery = req.query.search as string; // Get search query if provided
+    
+    let backButton = {
+      text: 'Back to Recipes',
+      url: '/recipes',
+      icon: '📖'
+    };
+
+    // Determine the back button based on referrer or query parameter
+    if (queryPage && typeof queryPage === 'string') {
+      // If page info is passed via query, use that (most reliable)
+      const userId = req.query.userId as string; // Get userId if provided
+      
+      switch (queryPage.toLowerCase()) {
+        case 'dashboard':
+        case 'profile':
+          backButton = {
+            text: 'Back to Dashboard',
+            url: '/dashboard',
+            icon: '🏠'
+          };
+          break;
+        case 'user-profile':
+          if (userId) {
+            // Get the username for the back button text
+            try {
+              const userResult = await pool.query('SELECT username FROM users WHERE id = $1', [userId]);
+              const username = userResult.rows.length > 0 ? userResult.rows[0].username : 'User';
+              backButton = {
+                text: `Back to ${username}'s Profile`,
+                url: `/users/${userId}`,
+                icon: '👤'
+              };
+            } catch (error) {
+              console.error('Error fetching username for back button:', error);
+              backButton = {
+                text: 'Back to Profile',
+                url: `/users/${userId}`,
+                icon: '👤'
+              };
+            }
+          } else {
+            backButton = {
+              text: 'Back to Profile',
+              url: '/dashboard',
+              icon: '👤'
+            };
+          }
+          break;
+        case 'favorites':
+          backButton = {
+            text: 'Back to Favorites',
+            url: '/favorites',
+            icon: '❤️'
+          };
+          break;
+        case 'search':
+          backButton = {
+            text: 'Back to Search',
+            url: '/recipes/search',
+            icon: '🔍'
+          };
+          // If we have a search query, preserve it
+          if (searchQuery && typeof searchQuery === 'string') {
+            backButton.text = 'Back to Search Results';
+            backButton.url = `/recipes/search?q=${encodeURIComponent(searchQuery)}`;
+          }
+          break;
+        case 'recipes':
+          backButton = {
+            text: 'Back to Recipes',
+            url: '/recipes',
+            icon: '📖'
+          };
+          break;
+        default:
+          backButton.text = `Back to ${queryPage}`;
+          backButton.url = `/${queryPage}`;
+      }
+    } else if (referrer) {
+      // Fall back to referrer analysis
+      if (referrer.includes('/dashboard') || referrer.includes('/profile')) {
+        backButton = {
+          text: 'Back to Dashboard',
+          url: '/dashboard',
+          icon: '🏠'
+        };
+      } else if (referrer.includes('/favorites')) {
+        backButton = {
+          text: 'Back to Favorites',
+          url: '/favorites',
+          icon: '❤️'
+        };
+      } else if (referrer.includes('/recipes/search') || referrer.includes('search')) {
+        backButton = {
+          text: 'Back to Search',
+          url: '/recipes/search',
+          icon: '🔍'
+        };
+      } else if (referrer.includes('/users/')) {
+        const userIdMatch = referrer.match(/\/users\/([^\/\?]+)/);
+        if (userIdMatch) {
+          backButton = {
+            text: 'Back to Profile',
+            url: `/users/${userIdMatch[1]}`,
+            icon: '👤'
+          };
+        }
+      } else if (referrer.includes('/recipes')) {
+        backButton = {
+          text: 'Back to Recipes',
+          url: '/recipes',
+          icon: '📖'
+        };
+      }
+    }
+
+    res.render('recipe-detail', { 
+      title: recipe.title, 
+      recipe, 
+      user: req.user,
+      backButton 
+    });
   } catch (error) {
     console.error(error);
     req.flash('error', 'Failed to load recipe');
@@ -973,5 +1128,5 @@ app.get('/favorites', isAuthenticated, async (req, res) => {
 
 // Start the server
 app.listen(port, () => {
-  console.log(`Server is running on http://localhost:${port}`);
+  console.log(`🚀 Server is running on http://localhost:${port} (with auto-reload enabled)`);
 });

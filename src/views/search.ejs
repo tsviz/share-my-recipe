@@ -121,6 +121,19 @@
         <i class="bi bi-mic-fill"></i>
       </button>
     </div>
+    
+    <!-- User Preferences -->
+    <div class="row mb-3">
+      <div class="col-md-6">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="openInNewTab" checked>
+          <label class="form-check-label" for="openInNewTab">
+            <i class="bi bi-box-arrow-up-right"></i> Open recipes in new tabs
+          </label>
+        </div>
+      </div>
+    </div>
+    
     <button type="submit" class="btn btn-primary">Get Recommendations</button>
   </form>
 
@@ -182,7 +195,7 @@
             <% recommendations.slice(0, 5).forEach((recipe, index) => { %>
               <li class="mb-1" id="recipe-<%= index %>">
                 <i class="fas fa-utensils me-2" style="color: #4fd1c5; font-size: 0.8rem;"></i>
-                <a href="/recipes/<%= recipe.id %>" class="recipe-link"><%= recipe.title %></a>
+                <a href="/recipes/<%= recipe.id %>?page=search<%= locals.about ? '&search=' + encodeURIComponent(locals.about) : '' %>" class="recipe-link"><%= recipe.title %></a>
                 <% if (recipe.cuisine) { %><small class="text-muted">(<%= recipe.cuisine %>)</small><% } %>
               </li>
             <% }) %>
@@ -205,7 +218,11 @@
               <h5 class="card-title text-primary"><%= recipe.title %></h5>
               <p class="card-text text-muted" style="font-size: 1em; line-height: 1.6; color: #333;"><%= recipe.description %></p>
               <p class="text-muted" style="margin-top: 10px;"><small><strong>Cuisine:</strong> <%= recipe.cuisine || 'Not specified' %></small></p>
-              <a href="/recipes/<%= recipe.id %>" class="btn btn-outline-primary btn-sm" target="_blank">View Recipe</a>
+              <a href="/recipes/<%= recipe.id %>?page=search<%= locals.about ? '&search=' + encodeURIComponent(locals.about) : '' %>" 
+                 class="btn btn-outline-primary btn-sm recipe-link" 
+                 data-recipe-url="/recipes/<%= recipe.id %>?page=search<%= locals.about ? '&search=' + encodeURIComponent(locals.about) : '' %>">
+                View Recipe
+              </a>
             </div>
           </div>
         </div>
@@ -358,6 +375,40 @@
         voiceSearchBtn.style.display = 'none';
         console.warn('Speech recognition not supported in this browser.');
       }
+      
+      // Handle recipe link preferences
+      const openInNewTabCheckbox = document.getElementById('openInNewTab');
+      const recipeLinks = document.querySelectorAll('.recipe-link');
+      
+      // Load saved preference
+      const savedPreference = localStorage.getItem('openRecipesInNewTab');
+      if (savedPreference !== null) {
+        openInNewTabCheckbox.checked = savedPreference === 'true';
+      }
+      
+      // Function to update recipe links based on preference
+      function updateRecipeLinks() {
+        const openInNewTab = openInNewTabCheckbox.checked;
+        
+        recipeLinks.forEach(link => {
+          if (openInNewTab) {
+            link.setAttribute('target', '_blank');
+            link.setAttribute('rel', 'noopener noreferrer');
+          } else {
+            link.removeAttribute('target');
+            link.removeAttribute('rel');
+          }
+        });
+        
+        // Save preference
+        localStorage.setItem('openRecipesInNewTab', openInNewTab.toString());
+      }
+      
+      // Set initial state
+      updateRecipeLinks();
+      
+      // Update when preference changes
+      openInNewTabCheckbox.addEventListener('change', updateRecipeLinks);
     });
 </script>
 

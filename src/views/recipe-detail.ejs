@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title><%= title %></title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
         body { background-color: #f8f9fa; }
         .favorite-heart { color: #e25555; font-size: 2rem; }
@@ -37,8 +38,48 @@
         <h4>Instructions</h4>
         <p><%= recipe.instructions || 'No instructions available.' %></p>
         <div class="mt-4">
-            <a href="/recipes" class="btn btn-outline-secondary">Back to Recipes</a>
-            <a href="/favorites" class="btn btn-outline-danger ms-2">Back to Favorites</a>
+            <% if (typeof backButton !== 'undefined' && backButton && backButton.text && backButton.text.includes('search')) { %>
+                <!-- Special handling for search back button with options -->
+                <div class="btn-group" role="group">
+                    <button type="button" class="btn btn-outline-secondary" onclick="goBackToSearch('original')">
+                        <span style="margin-right: 8px;">🔍</span>
+                        Back to Original Search
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" onclick="goBackToSearch('new')">
+                        <span style="margin-right: 8px;">🔍</span>
+                        New Search
+                    </button>
+                </div>
+                
+                <script>
+                function goBackToSearch(type) {
+                    if (type === 'original') {
+                        // Try to go back in history first
+                        if (window.history.length > 1) {
+                            window.history.back();
+                        } else {
+                            // Fallback to the search URL
+                            window.location.href = '<%= backButton.url %>';
+                        }
+                    } else if (type === 'new') {
+                        // Open new search in current tab
+                        window.location.href = '/recipes/search';
+                    }
+                }
+                </script>
+                
+            <% } else if (typeof backButton !== 'undefined' && backButton) { %>
+                <a href="<%= backButton.url %>" class="btn btn-outline-secondary">
+                    <span style="margin-right: 8px;"><%= backButton.icon %></span>
+                    <%= backButton.text %>
+                </a>
+            <% } else { %>
+                <a href="/recipes" class="btn btn-outline-secondary">📖 Back to Recipes</a>
+            <% } %>
+            
+            <% if (user && user.id === recipe.user_id) { %>
+                <a href="/recipes/edit/<%= recipe.id %>" class="btn btn-outline-primary ms-2">✏️ Edit Recipe</a>
+            <% } %>
         </div>
     </div>
 </body>

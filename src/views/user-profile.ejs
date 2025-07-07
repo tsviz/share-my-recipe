@@ -68,7 +68,7 @@
                                 <% if (recipe.category_name) { %>
                                     <span class="badge bg-warning text-dark mb-2"><%= recipe.category_name %></span>
                                 <% } %>
-                                <a href="/recipes/<%= recipe.id %>" class="btn btn-main btn-sm mt-2">View Recipe</a>
+                                <a href="/recipes/<%= recipe.id %>?page=user-profile&userId=<%= profileUser.id %>" class="btn btn-main btn-sm mt-2">View Recipe</a>
                             </div>
                         </div>
                     </div>
@@ -92,7 +92,7 @@
                                     <span class="badge bg-warning text-dark mb-2"><%= recipe.category_name %></span>
                                 <% } %>
                                 <span class="small text-muted">By <a href="/users/<%= recipe.user_id %>"><%= recipe.username %></a></span><br>
-                                <a href="/recipes/<%= recipe.id %>" class="btn btn-main btn-sm mt-2">View Recipe</a>
+                                <a href="/recipes/<%= recipe.id %>?page=user-profile&userId=<%= profileUser.id %>" class="btn btn-main btn-sm mt-2">View Recipe</a>
                             </div>
                         </div>
                     </div>

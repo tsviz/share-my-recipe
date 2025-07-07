@@ -84,7 +84,7 @@
                                         <li><%= ingredient.name %> <% if (ingredient.quantity) { %>(<%= ingredient.quantity %>)<% } %></li>
                                     <% }) %>
                                 </ul>
-                                <a href="/recipes/<%= recipe.id %>" class="btn btn-outline-danger btn-sm">View Recipe</a>
+                                <a href="/recipes/<%= recipe.id %>?page=favorites" class="btn btn-outline-danger btn-sm">View Recipe</a>
                             </div>
                         </div>
                     </div>

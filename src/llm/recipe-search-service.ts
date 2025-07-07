@@ -7,6 +7,7 @@ interface CacheItem {
   timestamp: number;
   data: any[];
   aiAnalysis?: any;
+  positiveVibe?: string;
 }
 
 /**
@@ -216,34 +217,6 @@ export class RecipeSearchService {
   }
 
   /**
-   * Ensure Jewish cuisine is always considered in the recommendations
-   */
-  private ensureJewishCuisineInclusion(aiAnalysis: any): void {
-    if (!aiAnalysis.cuisines.includes('Jewish')) {
-      console.log('Adding Jewish cuisine to the analysis');
-      aiAnalysis.cuisines.push('Jewish');
-    }
-  }
-
-  /**
-   * Ensure all recognized cuisines are included in the recommendations
-   */
-  private ensureAllCuisinesInclusion(aiAnalysis: any): void {
-    const recognizedCuisines = [
-      'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
-      'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
-      'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
-    ];
-
-    recognizedCuisines.forEach(cuisine => {
-      if (!aiAnalysis.cuisines.includes(cuisine)) {
-        console.log(`Adding ${cuisine} cuisine to the analysis`);
-        aiAnalysis.cuisines.push(cuisine);
-      }
-    });
-  }
-
-  /**
    * Adjust SQL query to prioritize user-specified cuisines
    */
   private prioritizeUserCuisine(sqlQuery: string, sqlParams: any[], userCuisine: string): string {
@@ -361,6 +334,17 @@ export class RecipeSearchService {
       return 'Indian';
     }
     
+    // Check for generic cuisine requests that need mapping
+    if (lowerQuery.includes('asian food') || lowerQuery.includes('asian cuisine') || lowerQuery.includes('asian')) {
+      console.log('Found mention of Asian cuisine, will map to specific Asian cuisines');
+      return 'Asian'; // This will be mapped to specific Asian cuisines later
+    }
+    
+    if (lowerQuery.includes('latin food') || lowerQuery.includes('latin cuisine') || lowerQuery.includes('latin')) {
+      console.log('Found mention of Latin cuisine, will map to specific Latin cuisines');
+      return 'Latin'; // This will be mapped to specific Latin cuisines later
+    }
+    
     // Common cuisine keywords to check for
     const cuisineKeywords: {[key: string]: string} = {
       'american': 'American',
@@ -383,10 +367,7 @@ export class RecipeSearchService {
       'african': 'African',
       'brazilian': 'Brazilian',
       'caribbean': 'Caribbean',
-      'asian': 'Asian',
       'european': 'European',
-      'latin american': 'Latin American',
-      'african american': 'African American',
       'southern': 'Southern',
       'cajun': 'Cajun',
       'creole': 'Creole',
@@ -488,11 +469,40 @@ export class RecipeSearchService {
       const aiAnalysis = await this.analyzeQueryWithAI(userQuery);
       console.log('AI analysis of query:', aiAnalysis);
 
-      // Ensure Jewish cuisine is included in the analysis
-      this.ensureJewishCuisineInclusion(aiAnalysis);
+      // Map generic cuisines to specific ones BEFORE filtering
+      const cuisineMapping: {[key: string]: string[]} = {
+        'Latin': ['Mexican', 'Brazilian', 'Caribbean', 'Spanish'],
+        'Asian': ['Chinese', 'Japanese', 'Korean', 'Thai', 'Vietnamese', 'Indian'],
+        'European': ['Italian', 'French', 'German', 'Greek'],
+        'Middle Eastern': ['Middle Eastern'],
+        'African': ['African', 'Ethiopian']
+      };
 
-      // Ensure all recognized cuisines are included in the analysis
-      this.ensureAllCuisinesInclusion(aiAnalysis);
+      // Check for generic cuisines and map them to specific ones
+      for (const [genericCuisine, specificCuisines] of Object.entries(cuisineMapping)) {
+        if (aiAnalysis.cuisines && aiAnalysis.cuisines.includes(genericCuisine)) {
+          console.log(`Mapping ${genericCuisine} cuisine to specific cuisines: ${specificCuisines.join(', ')}`);
+          const genericIndex = aiAnalysis.cuisines.indexOf(genericCuisine);
+          aiAnalysis.cuisines.splice(genericIndex, 1); // Remove generic cuisine
+          
+          // Add specific cuisines
+          specificCuisines.forEach(cuisine => {
+            if (!aiAnalysis.cuisines.includes(cuisine)) {
+              aiAnalysis.cuisines.push(cuisine);
+            }
+          });
+        }
+      }
+
+      // Only ensure some fallback cuisines if no cuisines were detected
+      if (!aiAnalysis.cuisines || aiAnalysis.cuisines.length === 0) {
+        console.log('No specific cuisines detected, adding broad fallback cuisines');
+        aiAnalysis.cuisines = [
+          'American', 'Italian', 'Mexican', 'Chinese', 'Japanese', 'Thai', 'Indian',
+          'French', 'Mediterranean', 'Greek', 'Spanish', 'Middle Eastern', 'Korean',
+          'Vietnamese', 'Jewish', 'German', 'Ethiopian', 'African', 'Brazilian', 'Caribbean'
+        ];
+      }
 
       // Filter out generic or 'Not specified' values from AI analysis
       aiAnalysis.mainDish = aiAnalysis.mainDish.filter((dish: string) => dish !== 'Not specified');
@@ -662,6 +672,30 @@ export class RecipeSearchService {
     // Respect user preferences in fallback search
     const aiAnalysis = this.createFallbackAnalysis(query);
 
+    // Map generic cuisines to specific ones in fallback search too
+    const cuisineMapping: {[key: string]: string[]} = {
+      'Latin': ['Mexican', 'Brazilian', 'Caribbean', 'Spanish'],
+      'Asian': ['Chinese', 'Japanese', 'Korean', 'Thai', 'Vietnamese', 'Indian'],
+      'European': ['Italian', 'French', 'German', 'Greek'],
+      'Middle Eastern': ['Middle Eastern'],
+      'African': ['African', 'Ethiopian']
+    };
+
+    for (const [genericCuisine, specificCuisines] of Object.entries(cuisineMapping)) {
+      if (aiAnalysis.cuisines && aiAnalysis.cuisines.includes(genericCuisine)) {
+        console.log(`Fallback: Mapping ${genericCuisine} cuisine to specific cuisines: ${specificCuisines.join(', ')}`);
+        const genericIndex = aiAnalysis.cuisines.indexOf(genericCuisine);
+        aiAnalysis.cuisines.splice(genericIndex, 1); // Remove generic cuisine
+        
+        // Add specific cuisines
+        specificCuisines.forEach(cuisine => {
+          if (!aiAnalysis.cuisines.includes(cuisine)) {
+            aiAnalysis.cuisines.push(cuisine);
+          }
+        });
+      }
+    }
+
     // Build a more specific fallback query if mainDish is identified
     let sqlQuery = `
       SELECT r.id, r.title, r.description, r.cuisine, r.category_id
@@ -675,10 +709,27 @@ export class RecipeSearchService {
     // Update fallback search logic to prioritize explicitly requested cuisines
     const requestedCuisine = this.extractSpecificCuisineFromQuery(query);
     if (requestedCuisine) {
-      console.log(`User specifically requested ${requestedCuisine} cuisine, restricting fallback results.`);
-      sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
-      sqlParams.push(`%${requestedCuisine}%`);
-      paramIndex++;
+      // Handle generic cuisine mapping in specific cuisine extraction too
+      if (requestedCuisine === 'Asian') {
+        console.log(`User specifically requested Asian cuisine, expanding to specific Asian cuisines.`);
+        const asianCuisines = ['Chinese', 'Japanese', 'Korean', 'Thai', 'Vietnamese', 'Indian'];
+        const cuisineConditions = asianCuisines.map((cuisine, index) => `r.cuisine ILIKE $${paramIndex + index}`);
+        sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
+        sqlParams.push(...asianCuisines.map(cuisine => `%${cuisine}%`));
+        paramIndex += asianCuisines.length;
+      } else if (requestedCuisine === 'Latin') {
+        console.log(`User specifically requested Latin cuisine, expanding to specific Latin cuisines.`);
+        const latinCuisines = ['Mexican', 'Brazilian', 'Caribbean', 'Spanish'];
+        const cuisineConditions = latinCuisines.map((cuisine, index) => `r.cuisine ILIKE $${paramIndex + index}`);
+        sqlQuery += ` AND (${cuisineConditions.join(' OR ')})`;
+        sqlParams.push(...latinCuisines.map(cuisine => `%${cuisine}%`));
+        paramIndex += latinCuisines.length;
+      } else {
+        console.log(`User specifically requested ${requestedCuisine} cuisine, restricting fallback results.`);
+        sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
+        sqlParams.push(`%${requestedCuisine}%`);
+        paramIndex++;
+      }
     } else if (aiAnalysis.cuisines.length > 0) {
       console.log(`Filtering fallback search by cuisines: ${aiAnalysis.cuisines.join(', ')}`);
       const cuisineConditions: string[] = aiAnalysis.cuisines.map((cuisine: string, index: number): string => `r.cuisine ILIKE $${paramIndex + index}`);
@@ -1072,13 +1123,31 @@ export class RecipeSearchService {
   /**
    * Save data to the cache with a timestamp.
    */
-  private saveToCache(query: string, data: any[]): void {
+  private saveToCache(query: string, data: any[], positiveVibe?: string): void {
     if (!this.CACHE_ENABLED) return;
 
     this.cache.set(query, {
       timestamp: Date.now(),
-      data: data
+      data: data,
+      positiveVibe: positiveVibe
     });
+  }
+
+  /**
+   * Get cached positive vibe for a query if it exists and is not expired.
+   */
+  private getCachedPositiveVibe(query: string): string | null {
+    if (!this.CACHE_ENABLED) return null;
+
+    const normalizedQuery = query.toLowerCase().trim();
+    const cacheItem = this.cache.get(normalizedQuery);
+    if (cacheItem) {
+      const now = Date.now();
+      if (now - cacheItem.timestamp < this.CACHE_TTL) {
+        return cacheItem.positiveVibe || null;
+      }
+    }
+    return null;
   }
 
   /**
@@ -1099,6 +1168,72 @@ export class RecipeSearchService {
     
     if (cleanedCount > 0) {
       console.log(`Cleaned ${cleanedCount} expired cache entries`);
+    }
+  }
+
+  /**
+   * Combined search that includes both recipes and positive vibe generation with caching
+   */
+  public async searchRecipesWithPositiveVibe(userQuery: string): Promise<{
+    recipes: any[],
+    positiveVibe: string,
+    aiExplanation?: string
+  }> {
+    try {
+      const normalizedQuery = userQuery.toLowerCase().trim();
+
+      // Check cache for both recipes and positive vibe
+      const cachedRecipes = this.getFromCache(normalizedQuery);
+      const cachedPositiveVibe = this.getCachedPositiveVibe(normalizedQuery);
+
+      if (cachedRecipes && cachedPositiveVibe) {
+        console.log('Cache hit! Using cached results and positive vibe for:', normalizedQuery);
+        
+        // Extract AI explanation if available
+        let aiExplanation = '';
+        if (cachedRecipes.length > 0 && cachedRecipes[0].ai_analysis) {
+          aiExplanation = cachedRecipes[0].ai_analysis;
+          // Clean up ai_analysis from cached results
+          cachedRecipes.forEach((recipe: { ai_analysis?: string }) => delete recipe.ai_analysis);
+        }
+
+        return {
+          recipes: cachedRecipes,
+          positiveVibe: cachedPositiveVibe,
+          aiExplanation
+        };
+      }
+
+      // Perform search
+      const searchResults = await this.searchRecipes(userQuery);
+      
+      // Extract AI explanation if available
+      let aiExplanation = '';
+      if (searchResults.length > 0 && searchResults[0].ai_analysis) {
+        aiExplanation = searchResults[0].ai_analysis;
+        // Remove the ai_analysis field from results to avoid confusion in the view
+        searchResults.forEach((recipe: { ai_analysis?: string }) => delete recipe.ai_analysis);
+      }
+
+      // Generate positive vibe
+      const positiveVibe = await this.generatePositiveVibe(userQuery, searchResults);
+
+      // Cache both results and positive vibe
+      this.saveToCache(normalizedQuery, searchResults, positiveVibe);
+
+      return {
+        recipes: searchResults,
+        positiveVibe,
+        aiExplanation
+      };
+    } catch (error) {
+      console.error('Error in combined search:', error);
+      const fallbackResults = await this.fallbackSearch(userQuery);
+      return {
+        recipes: fallbackResults,
+        positiveVibe: "Here are some delicious recipes I found for you!",
+        aiExplanation: ''
+      };
     }
   }
 
@@ -1433,7 +1568,10 @@ export class RecipeSearchService {
       'ethiopian': 'Ethiopian',
       'african': 'African',
       'brazilian': 'Brazilian',
-      'caribbean': 'Caribbean'
+      'caribbean': 'Caribbean',
+      'asian': 'Asian',
+      'latin': 'Latin',
+      'european': 'European'
     };
     
     // Check if the query mentions any cuisine
