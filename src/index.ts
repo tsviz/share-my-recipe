@@ -16,6 +16,7 @@ import fetch from 'node-fetch';
 // Import our LLM search service
 import { RecipeSearchService } from './llm/recipe-search-service';
 import { NutritionCalculatorService } from './llm/nutrition-calculator-service';
+import { IngredientSubstitutionService } from './llm/ingredient-substitution-service';
 
 // Import authentication modules
 import configurePassport from './auth/passport-config';
@@ -585,6 +586,9 @@ const recipeSearchService = new RecipeSearchService(pool);
 
 // Create an instance of our nutrition calculator service
 const nutritionCalculatorService = new NutritionCalculatorService(pool);
+
+// Create an instance of our ingredient substitution service
+const ingredientSubstitutionService = new IngredientSubstitutionService(pool);
 
 // Update the search endpoint to use AI-powered search
 app.post('/recipes/search', async (req, res) => {
@@ -1230,6 +1234,74 @@ app.post('/api/recipes/:id/nutrition/scale', async (req, res) => {
     }
   } catch (error) {
     console.error('Error scaling nutrition:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// === AI-POWERED INGREDIENT SUBSTITUTION API ENDPOINTS ===
+
+// Get ingredient substitutions
+// @ts-ignore - TypeScript Express typing issue workaround
+app.post('/api/ai/substitute-ingredients', async (req, res) => {
+  try {
+    const { ingredient, quantity, recipeContext, dietaryRestrictions, cookingMethod } = req.body;
+    
+    if (!ingredient) {
+      return res.status(400).json({ error: 'Ingredient is required' });
+    }
+
+    const substitutionRequest = {
+      ingredient: ingredient.trim(),
+      quantity,
+      recipeContext,
+      dietaryRestrictions: Array.isArray(dietaryRestrictions) ? dietaryRestrictions : [],
+      cookingMethod
+    };
+
+    const substitutions = await ingredientSubstitutionService.getSubstitutions(substitutionRequest);
+    
+    res.json({
+      success: true,
+      data: substitutions,
+      message: substitutions.suggestions.length > 0 
+        ? `Found ${substitutions.suggestions.length} substitution options`
+        : 'No substitutions found for this ingredient'
+    });
+  } catch (error) {
+    console.error('Error getting ingredient substitutions:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
+});
+
+// Save substitution feedback
+// @ts-ignore - TypeScript Express typing issue workaround
+app.post('/api/ai/substitution-feedback', async (req, res) => {
+  try {
+    const { originalIngredient, substituteIngredient, success, context } = req.body;
+    
+    if (!originalIngredient || !substituteIngredient || typeof success !== 'boolean') {
+      return res.status(400).json({ error: 'Original ingredient, substitute ingredient, and success flag are required' });
+    }
+
+    await ingredientSubstitutionService.saveFeedback(
+      originalIngredient.trim(),
+      substituteIngredient.trim(),
+      success,
+      context
+    );
+    
+    res.json({
+      success: true,
+      message: 'Feedback saved successfully'
+    });
+  } catch (error) {
+    console.error('Error saving substitution feedback:', error);
     res.status(500).json({
       success: false,
       error: 'Internal server error'
