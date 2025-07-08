@@ -418,5 +418,6 @@
 
     <include file="add-popularity-column.sql" relativeToChangelogFile="true"/>
     <include  file="insert_profile_images.sql" relativeToChangelogFile="true"/>
+    <include file="ai-nutrition-tables.sql" relativeToChangelogFile="true"/>
 
 </databaseChangeLog>

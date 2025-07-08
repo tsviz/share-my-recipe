@@ -426,41 +426,6 @@ app.post('/recipes', isAuthenticated, async (req, res) => {
   }
 });
 
-// === AI-POWERED NUTRITION ANALYSIS API ENDPOINTS ===
-
-// Calculate nutrition for a recipe
-// @ts-ignore - TypeScript Express typing issue workaround
-app.post('/api/nutrition/calculate', async (req, res) => {
-  try {
-    const { recipeId } = req.body;
-    
-    if (!recipeId) {
-      return res.status(400).json({ error: 'Recipe ID is required' });
-    }
-
-    const nutrition = await nutritionCalculatorService.calculateNutritionForRecipe(recipeId);
-    
-    if (nutrition) {
-      res.json({
-        success: true,
-        nutrition: nutrition,
-        message: 'Nutrition calculated successfully'
-      });
-    } else {
-      res.status(404).json({
-        success: false,
-        error: 'Unable to calculate nutrition for this recipe'
-      });
-    }
-  } catch (error) {
-    console.error('Error calculating nutrition:', error);
-    res.status(500).json({
-      success: false,
-      error: 'Internal server error'
-    });
-  }
-});
-
 // Route to add a recipe to favorites
 app.post('/recipes/:id/favorite', isAuthenticated, async (req, res) => {
   const userId = (req.user as any).id;
@@ -1165,9 +1130,38 @@ app.get('/favorites', isAuthenticated, async (req, res) => {
   }
 });
 
-// Test route
-app.post('/test', async (req, res) => {
-  res.json({ test: 'ok' });
+// === AI-POWERED NUTRITION ANALYSIS API ENDPOINTS ===
+
+// Calculate nutrition for a recipe
+app.post('/api/ai/calculate-nutrition', async (req, res) => {
+  try {
+    const { recipeId } = req.body;
+    
+    if (!recipeId) {
+      return res.status(400).json({ error: 'Recipe ID is required' });
+    }
+
+    const nutrition = await nutritionCalculatorService.calculateNutritionForRecipe(recipeId);
+    
+    if (nutrition) {
+      res.json({
+        success: true,
+        nutrition: nutrition,
+        message: 'Nutrition calculated successfully'
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: 'Unable to calculate nutrition for this recipe'
+      });
+    }
+  } catch (error) {
+    console.error('Error calculating nutrition:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Internal server error'
+    });
+  }
 });
 
 // Get nutrition information for a recipe
@@ -1203,8 +1197,7 @@ app.get('/api/recipes/:id/nutrition', async (req, res) => {
   }
 });
 
-// Scale nutrition for different serving sizes  
-// @ts-ignore - TypeScript Express typing issue workaround
+// Scale nutrition for different serving sizes
 app.post('/api/recipes/:id/nutrition/scale', async (req, res) => {
   try {
     const recipeId = req.params.id;
