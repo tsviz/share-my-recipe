@@ -186,7 +186,7 @@
                     <div class="col">
                         <div class="card recipe-card h-100">
                             <div class="position-relative">
-                                <img src="https://source.unsplash.com/random/300x200/?<%= encodeURIComponent(recipe.title.split(' ')[0]) %>,food" class="card-img-top recipe-img" alt="<%= recipe.title %>">
+                                <img src="https://picsum.photos/300/200?random=<%= recipe.id %>" class="card-img-top recipe-img" alt="<%= recipe.title %>" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllY2VmIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiI+8J+NsSDwnZCR4oCczqnOsSBGb29kPC90ZXh0Pjwvc3ZnPg=='; this.onerror=null;">
                                 <% if (recipe.category_id) { %>
                                     <div class="recipe-badge"><%= recipe.category_name || 'Uncategorized' %></div>
                                 <% } %>

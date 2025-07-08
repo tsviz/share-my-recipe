@@ -61,7 +61,7 @@
                 <% recipes.forEach(recipe => { %>
                     <div class="col">
                         <div class="card h-100">
-                            <img src="https://source.unsplash.com/400x200/?<%= encodeURIComponent(recipe.title.split(' ')[0]) %>,food" class="card-img-top" alt="<%= recipe.title %>">
+                            <img src="https://picsum.photos/400/200?random=<%= recipe.id %>" class="card-img-top" alt="<%= recipe.title %>" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllY2VmIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiI+8J+NsSDwnZCR4oCczqnOsSBGb29kPC90ZXh0Pjwvc3ZnPg=='; this.onerror=null;">
                             <div class="card-body">
                                 <h5 class="card-title"><%= recipe.title %></h5>
                                 <p class="card-text"><%= recipe.description ? recipe.description.substring(0, 100) + '...' : 'No description provided.' %></p>
@@ -84,7 +84,7 @@
                 <% favoriteRecipes.forEach(recipe => { %>
                     <div class="col">
                         <div class="card h-100">
-                            <img src="https://source.unsplash.com/400x200/?<%= encodeURIComponent(recipe.title.split(' ')[0]) %>,food" class="card-img-top" alt="<%= recipe.title %>">
+                            <img src="https://picsum.photos/400/200?random=<%= recipe.id %>" class="card-img-top" alt="<%= recipe.title %>" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNDAwIiBoZWlnaHQ9IjIwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllY2VmIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiI+8J+NsSDwnZCR4oCczqnOsSBGb29kPC90ZXh0Pjwvc3ZnPg=='; this.onerror=null;">
                             <div class="card-body">
                                 <h5 class="card-title"><%= recipe.title %></h5>
                                 <p class="card-text"><%= recipe.description ? recipe.description.substring(0, 100) + '...' : 'No description provided.' %></p>

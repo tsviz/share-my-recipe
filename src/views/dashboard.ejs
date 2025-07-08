@@ -251,8 +251,8 @@
                             <div class="card recent-recipe-card mb-2">
                                 <div class="row g-0">
                                     <div class="col-4">
-                                        <img src="https://source.unsplash.com/random/120x120/?<%= encodeURIComponent(recipe.title.split(' ')[0]) %>,food" 
-                                             class="img-fluid recipe-thumbnail" alt="<%= recipe.title %>">
+                                        <img src="https://picsum.photos/120/120?random=<%= recipe.id %>" 
+                                             class="img-fluid recipe-thumbnail" alt="<%= recipe.title %>" onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMTIwIiBoZWlnaHQ9IjEyMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllY2VmIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTQiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiI+8J+NsTE8L3RleHQ+PC9zdmc+'; this.onerror=null;">
                                     </div>
                                     <div class="col-8">
                                         <div class="card-body p-2">
