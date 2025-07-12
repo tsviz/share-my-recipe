@@ -20,6 +20,7 @@ export class RecipeSearchService {
   private aiAvailable: boolean = true; // Optimistic initial setting
   private consecutiveFailures: number = 0;
   private readonly MAX_FAILURES = 3;
+  private readonly MAX_CACHE_SIZE = 1000; // Limit cache size to prevent memory bloat
   
   // Search result caching
   private cache: Map<string, CacheItem> = new Map();
