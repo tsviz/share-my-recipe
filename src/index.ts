@@ -718,7 +718,8 @@ app.post('/recipes/:id/unfavorite', isAuthenticated, async (req, res) => {
 // IMPORTANT: More specific routes come before general routes
 // Route to render the "Search Recipes" page
 app.get('/recipes/search', async (req, res) => {
-  const searchQuery = req.query.q as string;
+  // Check for both 'q' and 'query' parameters for backwards compatibility
+  const searchQuery = (req.query.q as string) || (req.query.query as string);
   
   // If we have a search query, automatically perform the search
   if (searchQuery && typeof searchQuery === 'string') {
@@ -1051,7 +1052,7 @@ app.get('/recipes/:id', async (req, res) => {
           // If we have a search query, preserve it
           if (searchQuery && typeof searchQuery === 'string') {
             backButton.text = 'Back to Search Results';
-            backButton.url = `/recipes/search?q=${encodeURIComponent(searchQuery)}`;
+            backButton.url = `/recipes/search?query=${encodeURIComponent(searchQuery)}`;
           }
           break;
         case 'recipes':
@@ -1103,11 +1104,6 @@ app.get('/recipes/:id', async (req, res) => {
       }
     }
 
-    res.render('recipe-detail', { 
-      title: recipe.title, 
-      recipe, 
-      user: req.user,
-      backButton 
     // Fetch comments and ratings for this recipe
     const commentsResult = await pool.query(
       `SELECT rc.*, u.username FROM recipe_comments rc
@@ -1121,7 +1117,7 @@ app.get('/recipes/:id', async (req, res) => {
     // Calculate average rating (if any comments exist)
     let averageRating = null;
     if (comments.length > 0) {
-      const sum = comments.reduce((acc, c) => acc + (c.rating || 0), 0);
+      const sum = comments.reduce((acc: number, c: any) => acc + (c.rating || 0), 0);
       averageRating = (sum / comments.length).toFixed(1);
     }
 
@@ -1129,6 +1125,7 @@ app.get('/recipes/:id', async (req, res) => {
       title: recipe.title,
       recipe,
       user: req.user,
+      backButton,
       comments,
       averageRating,
       isAuthenticated: !!req.user,

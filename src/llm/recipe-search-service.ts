@@ -641,11 +641,6 @@ export class RecipeSearchService {
         return validCuisines.includes(cuisine);
       });
 
-      // Remove the unused block that initializes paramIndex since it's declared again later
-      if (aiAnalysis.cuisines.length > 0) {
-        console.log(`Filtering search by cuisines: ${aiAnalysis.cuisines.join(', ')}`);
-        // This block appears to be incomplete/unused code
-      }
       // Remove any excluded cuisines from the inclusion list before building the SQL
       aiAnalysis.cuisines = aiAnalysis.cuisines.filter((cuisine: string) => !excludeCuisines.includes(cuisine));
       // Only keep valid cuisines
@@ -858,7 +853,7 @@ export class RecipeSearchService {
   // Fallback search: add excludeCuisines param and logic
   private async fallbackSearch(query: string, excludeCuisines: string[] = []): Promise<any[]> {
     console.log('Fallback search executed for query:', query);
-    const aiAnalysis = this.createFallbackAnalysis(query);
+    const aiAnalysis = await this.createFallbackAnalysis(query);
 
     // Map generic cuisines to specific ones in fallback search too
     const cuisineMapping: {[key: string]: string[]} = {
@@ -918,6 +913,8 @@ export class RecipeSearchService {
         sqlParams.push(`%${requestedCuisine}%`);
         paramIndex++;
       }
+    }
+    
     // Only add inclusion filter if not in exclusion list
     if (requestedCuisine && !excludeCuisines.includes(requestedCuisine)) {
       sqlQuery += ` AND r.cuisine ILIKE $${paramIndex}`;
@@ -1019,6 +1016,7 @@ export class RecipeSearchService {
     );
   }
   
+
   /**
    * Perform search based on glossary terms without using the LLM
    * This can be faster and more accurate for common queries
@@ -2014,35 +2012,4 @@ export class RecipeSearchService {
       return 'Yummy! Here are some recipes you might enjoy!';
     }
  }
-}
-
-interface AIResponseAssumptions {
-  mainDish: string[];
-  cuisines: string[];
-  includeIngredients: string[];
-  excludeIngredients: string[];
-  dietaryPreferences: string[];
-  cookingMethods: string[];
-  [key: string]: any; // For any additional fields
-}
-
-function humanizeAIResponse(rawResponse: string): string {
-  const assumptions = rawResponse.match(/\{[^\}]*\}/);
-  if (!assumptions) {
-    return "Sorry, I couldn't extract assumptions from the AI response.";
-  }
-
-  const parsedAssumptions: AIResponseAssumptions = JSON.parse(assumptions[0]);
-  const humanizedResponse = [
-    "Here are the AI's assumptions based on your query:",
-    parsedAssumptions.mainDish.length ? `Main Dish: ${parsedAssumptions.mainDish.join(', ')}` : null,
-    parsedAssumptions.cuisines.length ? `Cuisine: ${parsedAssumptions.cuisines.join(', ')}` : null,
-    parsedAssumptions.includeIngredients.length ? `Includes: ${parsedAssumptions.includeIngredients.join(', ')}` : null,
-    parsedAssumptions.excludeIngredients.length ? `Excludes: ${parsedAssumptions.excludeIngredients.join(', ')}` : null,
-    parsedAssumptions.dietaryPreferences.length ? `Dietary Preferences: ${parsedAssumptions.dietaryPreferences.join(', ')}` : null,
-    parsedAssumptions.cookingMethods.length ? `Cooking Methods: ${parsedAssumptions.cookingMethods.join(', ')}` : null,
-    null
-  ];
-
-  return humanizedResponse.filter(Boolean).join('\n');
 }
