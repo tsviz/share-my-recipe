@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title><%= title %></title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
+    <style>
+        body { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .activity-container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin: 2rem auto;
+            max-width: 1200px;
+        }
+        
+        .activity-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .activity-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" patternUnits="userSpaceOnUse" width="100" height="100"><circle cx="25" cy="25" r="2" fill="white" opacity="0.05"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.03"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+        }
+        
+        .activity-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .activity-subtitle {
+            font-size: 1.1rem;
+            opacity: 0.9;
+            position: relative;
+            z-index: 2;
+            margin-bottom: 0;
+        }
+        
+        .activity-card {
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.08);
+            margin-bottom: 2rem;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            overflow: hidden;
+        }
+        
+        .activity-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 15px 35px rgba(0,0,0,0.12);
+        }
+        
+        .stats-container {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e6f3ff 100%);
+            border-radius: 16px;
+            padding: 2rem;
+            margin-bottom: 2rem;
+        }
+        
+        .stat-card {
+            background: white;
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.1);
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+        }
+        
+        .stat-card:hover {
+            transform: translateY(-3px);
+            border-color: rgba(102, 126, 234, 0.2);
+            box-shadow: 0 8px 25px rgba(102, 126, 234, 0.15);
+        }
+        
+        .stat-number {
+            font-size: 2.2rem;
+            font-weight: 700;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            margin-bottom: 0.5rem;
+        }
+        
+        .stat-label {
+            font-size: 0.9rem;
+            color: #6c757d;
+            font-weight: 500;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+        }
+        
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.4rem;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .section-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .activity-item {
+            background: linear-gradient(135deg, #f8f9ff 0%, #ffffff 100%);
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            transition: all 0.3s ease;
+            position: relative;
+        }
+        
+        .activity-item:hover {
+            transform: translateX(5px);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.1);
+        }
+        
+        .activity-item.favorited {
+            border-left-color: #dc3545;
+        }
+        
+        .activity-item.created {
+            border-left-color: #28a745;
+        }
+        
+        .activity-item.joined {
+            border-left-color: #007bff;
+        }
+        
+        .activity-item.browsed {
+            border-left-color: #17a2b8;
+        }
+        
+        .activity-icon {
+            position: absolute;
+            left: -14px;
+            top: 1.5rem;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            color: white;
+        }
+        
+        .activity-icon.success {
+            background: #28a745;
+        }
+        
+        .activity-icon.danger {
+            background: #dc3545;
+        }
+        
+        .activity-icon.primary {
+            background: #007bff;
+        }
+        
+        .activity-icon.info {
+            background: #17a2b8;
+        }
+        
+        .activity-content {
+            font-weight: 500;
+            color: #495057;
+            margin-bottom: 0.5rem;
+        }
+        
+        .activity-recipe {
+            font-weight: 600;
+            color: #667eea;
+            text-decoration: none;
+        }
+        
+        .activity-recipe:hover {
+            color: #764ba2;
+            text-decoration: underline;
+        }
+        
+        .activity-time {
+            font-size: 0.85rem;
+            color: #6c757d;
+            opacity: 0.8;
+        }
+        
+        .recipe-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            border: 1px solid rgba(102, 126, 234, 0.1);
+            margin-bottom: 1rem;
+        }
+        
+        .recipe-card:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .recipe-content {
+            padding: 1rem;
+        }
+        
+        .recipe-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            color: #495057;
+            margin-bottom: 0.5rem;
+            line-height: 1.3;
+        }
+        
+        .recipe-date {
+            font-size: 0.8rem;
+            color: #6c757d;
+            margin-bottom: 0.75rem;
+        }
+        
+        .btn-enhanced {
+            padding: 0.5rem 1.5rem;
+            border-radius: 20px;
+            font-weight: 500;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.85rem;
+        }
+        
+        .btn-primary-enhanced {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-color: transparent;
+        }
+        
+        .btn-primary-enhanced:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            color: white;
+        }
+        
+        .btn-outline-enhanced {
+            background: white;
+            color: #667eea;
+            border-color: #667eea;
+        }
+        
+        .btn-outline-enhanced:hover {
+            background: #667eea;
+            color: white;
+            transform: translateY(-2px);
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        @media (max-width: 768px) {
+            .activity-title {
+                font-size: 2rem;
+            }
+            
+            .stat-number {
+                font-size: 1.8rem;
+            }
+            
+            .activity-container {
+                margin: 1rem;
+                border-radius: 16px;
+            }
+            
+            .activity-item {
+                padding: 1rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <%- include('partials/header') %>
+    
+    <div class="container">
+        <div class="activity-container">
+            <!-- Activity Header -->
+            <div class="activity-header">
+                <div class="text-center">
+                    <h1 class="activity-title">
+                        <i class="bi bi-clock-history me-3"></i>Recent Activity
+                    </h1>
+                    <p class="activity-subtitle">Your recipe journey and favorites</p>
+                </div>
+            </div>
+
+            <!-- Dashboard Content -->
+            <div class="p-4">
+                <!-- Quick Stats -->
+                <div class="stats-container">
+                    <div class="row g-3">
+                        <div class="col-6 col-md-6">
+                            <div class="stat-card">
+                                <div class="stat-number"><%= totalRecipes %></div>
+                                <div class="stat-label">My Recipes</div>
+                            </div>
+                        </div>
+                        <div class="col-6 col-md-6">
+                            <div class="stat-card">
+                                <div class="stat-number"><%= totalFavorites %></div>
+                                <div class="stat-label">Favorites</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="row">
+                    <!-- Left Column: Activity Feed -->
+                    <div class="col-lg-8">
+                        <!-- Activity Feed -->
+                        <div class="activity-card p-4">
+                            <div class="section-title">
+                                <div class="section-icon">
+                                    <i class="bi bi-activity"></i>
+                                </div>
+                                <span>Activity Timeline</span>
+                            </div>
+                            
+                            <% if (activities.length === 0) { %>
+                                <div class="empty-state">
+                                    <i class="bi bi-clock-history"></i>
+                                    <h5>No activity yet</h5>
+                                    <p>Start creating and favoriting recipes to see your activity here!</p>
+                                    <a href="/recipes/new" class="btn btn-enhanced btn-primary-enhanced">
+                                        <i class="bi bi-plus-circle"></i>Create Your First Recipe
+                                    </a>
+                                </div>
+                            <% } else { %>
+                                <% activities.forEach((activity, index) => { %>
+                                    <div class="activity-item <%= activity.activity_type %>">
+                                        <div class="activity-icon <%= activity.color %>">
+                                            <i class="<%= activity.icon %>"></i>
+                                        </div>
+                                        <div class="activity-content">
+                                            <strong><%= activity.action %></strong> 
+                                            <% if (activity.activity_type === 'created' || activity.activity_type === 'favorited') { %>
+                                                <a href="/recipes/<%= activity.id %>" class="activity-recipe">"<%= activity.title %>"</a>
+                                            <% } else { %>
+                                                <span class="activity-recipe">"<%= activity.title %>"</span>
+                                            <% } %>
+                                        </div>
+                                        <div class="activity-time">
+                                            <%= new Date(activity.created_at).toLocaleString('en-US', { 
+                                                month: 'short', 
+                                                day: 'numeric', 
+                                                year: 'numeric',
+                                                hour: 'numeric',
+                                                minute: '2-digit',
+                                                hour12: true
+                                            }) %>
+                                        </div>
+                                    </div>
+                                <% }) %>
+                                
+                                <div class="text-center mt-4">
+                                    <a href="/dashboard" class="btn btn-enhanced btn-outline-enhanced">
+                                        <i class="bi bi-house"></i>Back to Dashboard
+                                    </a>
+                                </div>
+                            <% } %>
+                        </div>
+                    </div>
+
+                    <!-- Right Column: Recent Recipes -->
+                    <div class="col-lg-4">
+                        <!-- Recent Recipes -->
+                        <div class="activity-card p-4">
+                            <div class="section-title">
+                                <div class="section-icon">
+                                    <i class="bi bi-journal-plus"></i>
+                                </div>
+                                <span>Recent Recipes</span>
+                            </div>
+                            
+                            <% if (recentRecipes.length === 0) { %>
+                                <div class="text-center py-4">
+                                    <i class="bi bi-journal-plus" style="font-size: 3rem; color: #667eea; margin-bottom: 1rem; opacity: 0.5;"></i>
+                                    <p class="text-muted mb-3">No recipes yet</p>
+                                    <a href="/recipes/new" class="btn btn-enhanced btn-primary-enhanced">
+                                        <i class="bi bi-plus-circle"></i>Create First Recipe
+                                    </a>
+                                </div>
+                            <% } else { %>
+                                <% recentRecipes.forEach(recipe => { %>
+                                    <div class="recipe-card">
+                                        <div class="recipe-content">
+                                            <div class="recipe-title"><%= recipe.title %></div>
+                                            <div class="recipe-date">
+                                                Created <%= new Date(recipe.created_at).toLocaleDateString('en-US', {
+                                                    month: 'short',
+                                                    day: 'numeric',
+                                                    year: 'numeric'
+                                                }) %>
+                                            </div>
+                                            <a href="/recipes/<%= recipe.id %>" class="btn btn-enhanced btn-primary-enhanced">
+                                                <i class="bi bi-eye"></i>View Recipe
+                                            </a>
+                                        </div>
+                                    </div>
+                                <% }) %>
+                                
+                                <div class="text-center mt-3">
+                                    <a href="/profile" class="btn btn-enhanced btn-outline-enhanced">
+                                        <i class="bi bi-collection"></i>View All Recipes
+                                    </a>
+                                </div>
+                            <% } %>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="activity-card p-4">
+                            <div class="section-title">
+                                <div class="section-icon">
+                                    <i class="bi bi-lightning-charge"></i>
+                                </div>
+                                <span>Quick Actions</span>
+                            </div>
+                            <div class="d-grid gap-2">
+                                <a href="/recipes/new" class="btn btn-enhanced btn-primary-enhanced">
+                                    <i class="bi bi-plus-circle"></i>Create Recipe
+                                </a>
+                                <a href="/recipes/search" class="btn btn-enhanced btn-outline-enhanced">
+                                    <i class="bi bi-search"></i>Find Recipes
+                                </a>
+                                <a href="/favorites" class="btn btn-enhanced btn-outline-enhanced">
+                                    <i class="bi bi-heart-fill text-danger"></i>My Favorites
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add smooth scroll behavior
+        document.documentElement.style.scrollBehavior = 'smooth';
+        
+        // Add loading animation to activity items
+        document.addEventListener('DOMContentLoaded', function() {
+            const activityItems = document.querySelectorAll('.activity-item');
+            activityItems.forEach((item, index) => {
+                item.style.opacity = '0';
+                item.style.transform = 'translateX(-20px)';
+                setTimeout(() => {
+                    item.style.transition = 'all 0.6s ease';
+                    item.style.opacity = '1';
+                    item.style.transform = 'translateX(0)';
+                }, index * 100);
+            });
+        });
+    </script>
+</body>
+</html>
+
+<%- include('partials/footer') %>

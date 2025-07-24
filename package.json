@@ -37,6 +37,7 @@
   },
   "devDependencies": {
     "@mermaid-js/mermaid-cli": "^11.4.2",
+    "@tailwindcss/cli": "^4.1.11",
     "@types/bcrypt": "^5.0.2",
     "@types/connect-flash": "^0.0.40",
     "@types/express": "^5.0.1",

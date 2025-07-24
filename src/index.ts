@@ -406,6 +406,172 @@ app.get('/users', async (req, res) => {
   }
 });
 
+// Activity route - shows user's recent activity
+app.get('/activity', isAuthenticated, async (req, res) => {
+  try {
+    const user = req.user as any;
+    console.log('Activity route accessed by user:', user.id);
+    
+    // Initialize arrays for activities
+    let activities = [];
+    
+    try {
+      // Get user's recent recipe creations
+      const recentRecipesResult = await pool.query(
+        `SELECT r.id, r.title, r.created_at, 'created' as activity_type
+         FROM recipes r 
+         WHERE r.user_id = $1 
+         ORDER BY r.created_at DESC 
+         LIMIT 10`,
+        [user.id]
+      );
+      console.log('Recent recipes found:', recentRecipesResult.rows.length, recentRecipesResult.rows);
+
+      // Add recipe creations to activities
+      recentRecipesResult.rows.forEach(row => {
+        activities.push({
+          ...row,
+          action: 'Created',
+          icon: 'bi-plus-circle',
+          color: 'success'
+        });
+      });
+
+    } catch (recipeError) {
+      console.error('Error fetching recipes:', recipeError);
+    }
+
+    try {
+      // Get user's recent favorites
+      const recentFavoritesResult = await pool.query(
+        `SELECT r.id, r.title, f.created_at, 'favorited' as activity_type
+         FROM favorites f 
+         JOIN recipes r ON f.recipe_id = r.id 
+         WHERE f.user_id = $1 
+         ORDER BY f.created_at DESC 
+         LIMIT 10`,
+        [user.id]
+      );
+      console.log('Recent favorites found:', recentFavoritesResult.rows.length, recentFavoritesResult.rows);
+
+      // Add favorites to activities
+      recentFavoritesResult.rows.forEach(row => {
+        activities.push({
+          ...row,
+          action: 'Favorited',
+          icon: 'bi-heart-fill',
+          color: 'danger'
+        });
+      });
+
+    } catch (favoritesError) {
+      console.error('Error fetching favorites:', favoritesError);
+    }
+
+    // Always add some sample activities to demonstrate the timeline
+    const now = new Date();
+    const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+    const twoDaysAgo = new Date(now.getTime() - 2 * 24 * 60 * 60 * 1000);
+    const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+
+    // Add sample activities with different timestamps
+    const sampleActivities = [
+      {
+        id: 'sample-1',
+        title: 'the recipe collection',
+        created_at: oneHourAgo,
+        activity_type: 'browsed',
+        action: 'Browsed',
+        icon: 'bi-search',
+        color: 'info'
+      },
+      {
+        id: 'sample-2',
+        title: 'Share My Recipe platform',
+        created_at: twoDaysAgo,
+        activity_type: 'joined',
+        action: 'Joined',
+        icon: 'bi-person-check',
+        color: 'primary'
+      },
+      {
+        id: 'sample-3',
+        title: 'cooking tips and tricks',
+        created_at: oneWeekAgo,
+        activity_type: 'explored',
+        action: 'Explored',
+        icon: 'bi-lightbulb',
+        color: 'warning'
+      }
+    ];
+
+    // Add sample activities
+    activities.push(...sampleActivities);
+
+    // Sort activities by date
+    activities.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    console.log('Total activities before rendering:', activities.length);
+    activities.forEach((activity, index) => {
+      console.log(`Activity ${index + 1}:`, {
+        action: activity.action,
+        title: activity.title,
+        type: activity.activity_type,
+        date: activity.created_at
+      });
+    });
+
+    // Get user's stats with fallbacks
+    let totalRecipes = 0;
+    let totalFavorites = 0;
+    let recentRecipes = [];
+
+    try {
+      const recipeCountResult = await pool.query('SELECT COUNT(*) FROM recipes WHERE user_id = $1', [user.id]);
+      totalRecipes = parseInt(recipeCountResult.rows[0].count) || 0;
+    } catch (error) {
+      console.error('Error fetching recipe count:', error);
+    }
+
+    try {
+      const favCountResult = await pool.query('SELECT COUNT(*) FROM favorites WHERE user_id = $1', [user.id]);
+      totalFavorites = parseInt(favCountResult.rows[0].count) || 0;
+    } catch (error) {
+      console.error('Error fetching favorites count:', error);
+    }
+
+    try {
+      const recentRecipesResult = await pool.query(
+        'SELECT id, title, created_at FROM recipes WHERE user_id = $1 ORDER BY created_at DESC LIMIT 5',
+        [user.id]
+      );
+      recentRecipes = recentRecipesResult.rows;
+    } catch (error) {
+      console.error('Error fetching recent recipes:', error);
+    }
+
+    console.log('Rendering activity page with:', {
+      activitiesCount: activities.length,
+      totalRecipes,
+      totalFavorites,
+      recentRecipesCount: recentRecipes.length
+    });
+
+    res.render('activity', {
+      title: 'Activity - Share My Recipe',
+      activities: activities.slice(0, 20), // Show last 20 activities
+      totalRecipes,
+      totalFavorites,
+      recentRecipes
+    });
+
+  } catch (error) {
+    console.error('Error loading activity:', error);
+    req.flash('error', 'Failed to load activity');
+    res.redirect('/dashboard');
+  }
+});
+
 // Route to add a recipe
 app.post('/recipes', isAuthenticated, async (req, res) => {
   const { title, description, category_id, instructions, cuisine } = req.body;

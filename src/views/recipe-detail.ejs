@@ -7,80 +7,473 @@
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.0/font/bootstrap-icons.css">
     <style>
-        body { background-color: #f8f9fa; }
-        .favorite-heart { color: #e25555; font-size: 2rem; }
-        .favorite-heart-outline { color: #ff69b4; font-size: 2rem; text-shadow:0 1px 4px #fff,0 0 6px #ffb6c1; }
+        body { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+        
+        .recipe-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            overflow: hidden;
+            margin: 2rem auto;
+            max-width: 900px;
+        }
+        
+        .recipe-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 3rem 2rem;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .recipe-header::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: url('data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><defs><pattern id="grain" patternUnits="userSpaceOnUse" width="100" height="100"><circle cx="25" cy="25" r="2" fill="white" opacity="0.05"/><circle cx="75" cy="75" r="1" fill="white" opacity="0.03"/></pattern></defs><rect width="100" height="100" fill="url(%23grain)"/></svg>');
+        }
+        
+        .recipe-title {
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 1rem;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .recipe-meta {
+            display: flex;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+            align-items: center;
+            margin-top: 1rem;
+            position: relative;
+            z-index: 2;
+        }
+        
+        .recipe-badge {
+            background: rgba(255,255,255,0.2);
+            padding: 0.5rem 1rem;
+            border-radius: 25px;
+            font-weight: 500;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255,255,255,0.3);
+            font-size: 0.9rem;
+        }
+        
+        .favorite-btn {
+            background: rgba(255,255,255,0.2);
+            border: 2px solid rgba(255,255,255,0.3);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.5rem;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+            position: relative;
+            z-index: 2;
+        }
+        
+        .favorite-btn:hover {
+            background: rgba(255,255,255,0.3);
+            transform: scale(1.1);
+            border-color: rgba(255,255,255,0.5);
+        }
+        
+        .recipe-content {
+            padding: 0;
+        }
+        
+        .content-section {
+            padding: 2rem;
+            border-bottom: 1px solid #e9ecef;
+        }
+        
+        .content-section:last-child {
+            border-bottom: none;
+        }
+        
+        .section-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            margin-bottom: 1.5rem;
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #495057;
+        }
+        
+        .section-icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1.2rem;
+        }
+        
+        .ingredients-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 1rem;
+        }
+        
+        .ingredient-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border: 1px solid #dee2e6;
+            border-radius: 12px;
+            padding: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            transition: transform 0.2s ease;
+        }
+        
+        .ingredient-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .ingredient-icon {
+            width: 35px;
+            height: 35px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            flex-shrink: 0;
+        }
+        
+        .ingredient-name {
+            font-weight: 600;
+            color: #495057;
+            margin: 0;
+        }
+        
+        .ingredient-quantity {
+            font-size: 0.9rem;
+            color: #6c757d;
+            margin: 0;
+        }
+        
+        .instructions-content {
+            line-height: 1.7;
+            color: #495057;
+        }
+        
+        .instruction-step {
+            background: linear-gradient(135deg, #f8f9ff 0%, #e6f3ff 100%);
+            border-left: 4px solid #667eea;
+            border-radius: 8px;
+            padding: 1.5rem;
+            margin-bottom: 1rem;
+            position: relative;
+            counter-increment: step-counter;
+        }
+        
+        .instruction-step::before {
+            content: counter(step-counter);
+            position: absolute;
+            left: -14px;
+            top: 1rem;
+            background: #667eea;
+            color: white;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.9rem;
+            font-weight: bold;
+        }
+        
+        .instructions-steps {
+            counter-reset: step-counter;
+        }
+        
+        .action-buttons {
+            padding: 2rem;
+            background: #f8f9fa;
+            display: flex;
+            gap: 1rem;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        .btn-enhanced {
+            padding: 0.75rem 2rem;
+            border-radius: 25px;
+            font-weight: 600;
+            text-decoration: none;
+            transition: all 0.3s ease;
+            border: 2px solid transparent;
+            display: inline-flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .btn-primary-enhanced {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .btn-primary-enhanced:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+            color: white;
+        }
+        
+        .btn-secondary-enhanced {
+            background: white;
+            color: #667eea;
+            border-color: #667eea;
+        }
+        
+        .btn-secondary-enhanced:hover {
+            background: #667eea;
+            color: white;
+        }
+        
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: #6c757d;
+        }
+        
+        .empty-state i {
+            font-size: 4rem;
+            margin-bottom: 1rem;
+            opacity: 0.5;
+        }
+        
+        @media (max-width: 768px) {
+            .recipe-title {
+                font-size: 2rem;
+            }
+            
+            .recipe-meta {
+                flex-direction: column;
+                gap: 1rem;
+            }
+            
+            .ingredients-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .action-buttons {
+                flex-direction: column;
+            }
+            
+            .content-section {
+                padding: 1.5rem;
+            }
+        }
     </style>
 </head>
 <body>
-    <div class="container mt-5">
-        <h1 class="mb-3 d-flex align-items-center">
-            <%= recipe.title %>
-            <% if (typeof recipe.isFavorited !== 'undefined' && user) { %>
-                <form method="POST" action="/recipes/<%= recipe.id %>/<%= recipe.isFavorited ? 'unfavorite' : 'favorite' %>" style="display:inline; margin-left: 1rem;">
-                    <button type="submit" class="btn p-0 border-0 bg-transparent" title="<%= recipe.isFavorited ? 'Unfavorite' : 'Favorite' %>">
-                        <% if (recipe.isFavorited) { %>
-                            <span class="favorite-heart">&#10084;&#65039;</span>
+    <%- include('partials/header') %>
+    
+    <div class="container">
+        <div class="recipe-card">
+            <!-- Recipe Header -->
+            <div class="recipe-header">
+                <div class="row align-items-center">
+                    <div class="col-lg-8">
+                        <h1 class="recipe-title"><%= recipe.title %></h1>
+                        <% if (recipe.description) { %>
+                            <p class="lead mb-0 opacity-75"><%= recipe.description %></p>
                         <% } else { %>
-                            <span class="favorite-heart-outline">&#9825;</span>
+                            <p class="lead mb-0 opacity-75">A delicious recipe to try!</p>
                         <% } %>
-                    </button>
-                </form>
-            <% } %>
-        </h1>
-        <p class="lead"><%= recipe.description %></p>
-        <h4>Ingredients</h4>
-        <ul>
-            <% recipe.ingredients.forEach(ingredient => { %>
-                <li><%= ingredient.ingredient_name %> <% if (ingredient.quantity) { %>(<%= ingredient.quantity %>)<% } %></li>
-            <% }) %>
-        </ul>
-        <h4>Instructions</h4>
-        <p><%= recipe.instructions || 'No instructions available.' %></p>
-        <div class="mt-4">
-            <% if (typeof backButton !== 'undefined' && backButton && backButton.text && backButton.text.includes('search')) { %>
-                <!-- Special handling for search back button with options -->
-                <div class="btn-group" role="group">
-                    <button type="button" class="btn btn-outline-secondary" onclick="goBackToSearch('original')">
-                        <span style="margin-right: 8px;">🔍</span>
-                        Back to Original Search
-                    </button>
-                    <button type="button" class="btn btn-outline-secondary" onclick="goBackToSearch('new')">
-                        <span style="margin-right: 8px;">🔍</span>
-                        New Search
-                    </button>
+                        
+                        <div class="recipe-meta">
+                            <% if (recipe.cuisine) { %>
+                                <span class="recipe-badge">
+                                    <i class="bi bi-geo-alt me-2"></i><%= recipe.cuisine %>
+                                </span>
+                            <% } %>
+                            <span class="recipe-badge">
+                                <i class="bi bi-clock me-2"></i>30 mins
+                            </span>
+                            <span class="recipe-badge">
+                                <i class="bi bi-star me-2"></i>Easy
+                            </span>
+                        </div>
+                    </div>
+                    
+                    <div class="col-lg-4 text-end">
+                        <% if (typeof recipe.isFavorited !== 'undefined' && user) { %>
+                            <form method="POST" action="/recipes/<%= recipe.id %>/<%= recipe.isFavorited ? 'unfavorite' : 'favorite' %>" class="d-inline">
+                                <button type="submit" class="favorite-btn btn border-0" title="<%= recipe.isFavorited ? 'Remove from favorites' : 'Add to favorites' %>">
+                                    <% if (recipe.isFavorited) { %>
+                                        <i class="bi bi-heart-fill text-danger"></i>
+                                    <% } else { %>
+                                        <i class="bi bi-heart"></i>
+                                    <% } %>
+                                </button>
+                            </form>
+                        <% } %>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Recipe Content -->
+            <div class="recipe-content">
+                <!-- Ingredients Section -->
+                <div class="content-section">
+                    <div class="section-title">
+                        <div class="section-icon">
+                            <i class="bi bi-basket2"></i>
+                        </div>
+                        <span>Ingredients</span>
+                        <span class="ms-auto badge bg-secondary rounded-pill">
+                            <%= recipe.ingredients ? recipe.ingredients.length : 0 %> items
+                        </span>
+                    </div>
+                    
+                    <% if (recipe.ingredients && recipe.ingredients.length > 0) { %>
+                        <div class="ingredients-grid">
+                            <% recipe.ingredients.forEach((ingredient, index) => { %>
+                                <div class="ingredient-card">
+                                    <div class="ingredient-icon">
+                                        <i class="bi bi-check2"></i>
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        <p class="ingredient-name"><%= ingredient.ingredient_name || ingredient.name %></p>
+                                        <% if (ingredient.quantity) { %>
+                                            <p class="ingredient-quantity"><%= ingredient.quantity %></p>
+                                        <% } %>
+                                    </div>
+                                </div>
+                            <% }) %>
+                        </div>
+                    <% } else { %>
+                        <div class="empty-state">
+                            <i class="bi bi-basket2"></i>
+                            <p>No ingredients listed for this recipe yet.</p>
+                        </div>
+                    <% } %>
                 </div>
                 
-                <script>
-                function goBackToSearch(type) {
-                    if (type === 'original') {
-                        // Try to go back in history first
-                        if (window.history.length > 1) {
-                            window.history.back();
-                        } else {
-                            // Fallback to the search URL
-                            window.location.href = '<%= backButton.url %>';
-                        }
-                    } else if (type === 'new') {
-                        // Open new search in current tab
-                        window.location.href = '/recipes/search';
-                    }
-                }
-                </script>
-                
-            <% } else if (typeof backButton !== 'undefined' && backButton) { %>
-                <a href="<%= backButton.url %>" class="btn btn-outline-secondary">
-                    <span style="margin-right: 8px;"><%= backButton.icon %></span>
-                    <%= backButton.text %>
-                </a>
-            <% } else { %>
-                <a href="/recipes" class="btn btn-outline-secondary">📖 Back to Recipes</a>
-            <% } %>
+                <!-- Instructions Section -->
+                <div class="content-section">
+                    <div class="section-title">
+                        <div class="section-icon">
+                            <i class="bi bi-list-ol"></i>
+                        </div>
+                        <span>Instructions</span>
+                    </div>
+                    
+                    <% if (recipe.instructions && recipe.instructions.trim()) { %>
+                        <div class="instructions-content">
+                            <% 
+                            // Split instructions into steps if they contain numbered steps or line breaks
+                            const instructions = recipe.instructions.trim();
+                            const steps = instructions.split(/\n+|\d+\.\s+/).filter(step => step.trim());
+                            %>
+                            
+                            <% if (steps.length > 1) { %>
+                                <div class="instructions-steps">
+                                    <% steps.forEach((step, index) => { %>
+                                        <% if (step.trim()) { %>
+                                            <div class="instruction-step">
+                                                <%= step.trim() %>
+                                            </div>
+                                        <% } %>
+                                    <% }) %>
+                                </div>
+                            <% } else { %>
+                                <div class="instructions-steps">
+                                    <div class="instruction-step">
+                                        <%= instructions %>
+                                    </div>
+                                </div>
+                            <% } %>
+                        </div>
+                    <% } else { %>
+                        <div class="empty-state">
+                            <i class="bi bi-journal-text"></i>
+                            <p>No instructions available for this recipe yet.</p>
+                        </div>
+                    <% } %>
+                </div>
+            </div>
             
-            <% if (user && user.id === recipe.user_id) { %>
-                <a href="/recipes/edit/<%= recipe.id %>" class="btn btn-outline-primary ms-2">✏️ Edit Recipe</a>
-            <% } %>
+            <!-- Action Buttons -->
+            <div class="action-buttons">
+                <% if (typeof backButton !== 'undefined' && backButton && backButton.text && backButton.text.includes('search')) { %>
+                    <button type="button" class="btn btn-enhanced btn-secondary-enhanced" onclick="goBackToSearch('original')">
+                        <i class="bi bi-search me-2"></i>Back to Search
+                    </button>
+                    <button type="button" class="btn btn-enhanced btn-secondary-enhanced" onclick="goBackToSearch('new')">
+                        <i class="bi bi-plus-circle me-2"></i>New Search
+                    </button>
+                <% } else if (typeof backButton !== 'undefined' && backButton) { %>
+                    <a href="<%= backButton.url %>" class="btn btn-enhanced btn-secondary-enhanced">
+                        <i class="<%= backButton.icon === '📖' ? 'bi bi-book' : 'bi bi-arrow-left' %> me-2"></i>
+                        <%= backButton.text %>
+                    </a>
+                <% } else { %>
+                    <a href="/recipes" class="btn btn-enhanced btn-secondary-enhanced">
+                        <i class="bi bi-book me-2"></i>Back to Recipes
+                    </a>
+                <% } %>
+                
+                <% if (user && user.id === recipe.user_id) { %>
+                    <a href="/recipes/edit/<%= recipe.id %>" class="btn btn-enhanced btn-primary-enhanced">
+                        <i class="bi bi-pencil me-2"></i>Edit Recipe
+                    </a>
+                <% } %>
+            </div>
         </div>
     </div>
+
+    <script>
+        function goBackToSearch(type) {
+            if (type === 'original') {
+                if (window.history.length > 1) {
+                    window.history.back();
+                } else {
+                    window.location.href = "<%= typeof backButton !== 'undefined' && backButton ? backButton.url : '/recipes/search' %>";
+                }
+            } else if (type === 'new') {
+                window.location.href = '/recipes/search';
+            }
+        }
+
+        // Add smooth scroll behavior for better UX
+        document.documentElement.style.scrollBehavior = 'smooth';
+        
+        // Add click animation to ingredient cards
+        document.addEventListener('DOMContentLoaded', function() {
+            const ingredientCards = document.querySelectorAll('.ingredient-card');
+            ingredientCards.forEach(card => {
+                card.addEventListener('click', function() {
+                    this.style.transform = 'scale(0.98)';
+                    setTimeout(() => {
+                        this.style.transform = '';
+                    }, 150);
+                });
+            });
+        });
+    </script>
 </body>
 </html>
