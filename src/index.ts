@@ -129,7 +129,11 @@ app.post('/login', isNotAuthenticated, (req, res, next) => {
       if (err) { return next(err); }
       req.session.returnTo = returnTo; // Restore after session regeneration
       console.log('LOGIN REDIRECT: req.sessionID =', req.sessionID, 'req.session.returnTo =', req.session.returnTo);
-      const redirectTo: string = req.session.returnTo || '/profile';
+      // Always redirect to dashboard if logging in from homepage or no returnTo
+      let redirectTo: string = '/dashboard';
+      if (req.session.returnTo && req.session.returnTo !== '/' && req.session.returnTo !== '/login') {
+        redirectTo = req.session.returnTo;
+      }
       delete req.session.returnTo;
       return res.redirect(redirectTo);
     });
@@ -326,6 +330,8 @@ app.get('/profile/:userId', async (req, res) => {
       user: user,
       recipes: recipesResult.rows,
       favoriteCount: parseInt(favoritesResult.rows[0].count),
+      totalFavorites: parseInt(favoritesResult.rows[0].count), // Add this for template compatibility
+      userFavorites: null, // Add this for template compatibility
       viewCount: 0, // We'll implement view counting later
       isOwnProfile: isOwnProfile
     });

@@ -17,7 +17,7 @@
             background: white;
             border-radius: 20px;
             box-shadow: 0 20px 40px rgba(0,0,0,0.1);
-            overflow: hidden;
+            overflow: visible !important;
             margin: 2rem auto;
             max-width: 1200px;
         }
@@ -47,6 +47,7 @@
             text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
             position: relative;
             z-index: 2;
+            animation: fadeInUp 1s ease-out;
         }
         
         .welcome-subtitle {
@@ -55,6 +56,107 @@
             position: relative;
             z-index: 2;
             margin-bottom: 0;
+            animation: fadeInUp 1s ease-out 0.3s both;
+        }
+        
+        .user-avatar {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            object-fit: cover;
+            animation: bounceIn 1s ease-out 0.5s both;
+            box-shadow: 0 8px 25px rgba(0,0,0,0.2);
+        }
+        
+        .greeting-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 1.5rem;
+            flex-wrap: wrap;
+        }
+        
+        .greeting-text {
+            text-align: left;
+        }
+        
+        .wave-emoji {
+            display: inline-block;
+            animation: wave 2s ease-in-out infinite;
+            transform-origin: 70% 70%;
+            font-size: 1.5em;
+        }
+        
+        .cooking-icons {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: flex;
+            gap: 10px;
+            opacity: 0.3;
+        }
+        
+        .cooking-icon {
+            font-size: 1.5rem;
+            animation: float 3s ease-in-out infinite;
+        }
+        
+        .cooking-icon:nth-child(2) {
+            animation-delay: 0.5s;
+        }
+        
+        .cooking-icon:nth-child(3) {
+            animation-delay: 1s;
+        }
+        
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        
+        @keyframes bounceIn {
+            0% {
+                opacity: 0;
+                transform: scale(0.3);
+            }
+            50% {
+                transform: scale(1.05);
+            }
+            70% {
+                transform: scale(0.9);
+            }
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+        }
+        
+        @keyframes wave {
+            0%, 100% {
+                transform: rotate(0deg);
+            }
+            10%, 30%, 50%, 70%, 90% {
+                transform: rotate(14deg);
+            }
+            20%, 40%, 60%, 80% {
+                transform: rotate(-8deg);
+            }
+        }
+        
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px);
+            }
+            50% {
+                transform: translateY(-10px);
+            }
         }
         
         .dashboard-card {
@@ -64,7 +166,7 @@
             margin-bottom: 2rem;
             transition: all 0.3s ease;
             border: 1px solid rgba(102, 126, 234, 0.1);
-            overflow: hidden;
+            overflow: visible !important;
         }
         
         .dashboard-card:hover {
@@ -226,15 +328,50 @@
         .recipe-card {
             background: white;
             border-radius: 12px;
-            overflow: hidden;
+            overflow: visible !important;
             transition: all 0.3s ease;
             border: 1px solid rgba(102, 126, 234, 0.1);
             margin-bottom: 1rem;
+            position: relative;
         }
         
         .recipe-card:hover {
             transform: translateY(-3px);
             box-shadow: 0 8px 25px rgba(0,0,0,0.1);
+        }
+        
+        .recipe-rating-btn {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            border-radius: 50%;
+            width: 35px;
+            height: 35px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 1rem;
+            cursor: pointer;
+            z-index: 5;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+        }
+        
+        .recipe-rating-btn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.5);
+        }
+        
+        /* Ensure Bootstrap dropdowns appear above all content */
+        .dropdown-toggle {
+            z-index: 1055 !important;
+        }
+        
+        .dropdown-menu {
+            z-index: 1060 !important;
         }
         
         .recipe-thumbnail {
@@ -371,6 +508,50 @@
                 border-radius: 16px;
             }
         }
+        
+        /* Mobile responsiveness for greeting */
+        @media (max-width: 768px) {
+            .greeting-container {
+                flex-direction: column;
+                text-align: center;
+                gap: 1rem;
+            }
+            
+            .welcome-title {
+                font-size: 2rem;
+            }
+            
+            .user-avatar {
+                width: 60px;
+                height: 60px;
+            }
+            
+            .cooking-icons {
+                position: static;
+                justify-content: center;
+                margin-bottom: 1rem;
+                opacity: 0.4;
+            }
+            
+            .welcome-header {
+                padding: 2rem 1rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .welcome-title {
+                font-size: 1.7rem;
+            }
+            
+            .welcome-subtitle {
+                font-size: 1rem;
+            }
+            
+            .user-avatar {
+                width: 50px;
+                height: 50px;
+            }
+        }
 </style>
 
     </style>
@@ -382,11 +563,29 @@
         <div class="dashboard-container">
             <!-- Welcome Header -->
             <div class="welcome-header">
-                <div class="text-center">
-                    <h1 class="welcome-title">
-                        <i class="bi bi-house-heart me-3"></i>Hello, <%= user.username %>
-                    </h1>
-                    <p class="welcome-subtitle">Welcome back to your culinary journey. What delicious creation will you share today?</p>
+                <div class="cooking-icons">
+                    <i class="bi bi-egg-fried cooking-icon"></i>
+                    <i class="bi bi-cup-hot cooking-icon"></i>
+                    <i class="bi bi-mortarboard cooking-icon"></i>
+                </div>
+                
+                <div class="greeting-container">
+                    <% if (user.profile_image) { %>
+                        <img src="/profile-image/<%= user.id %>" alt="<%= user.username %>'s profile" class="user-avatar">
+                    <% } else { %>
+                        <div class="user-avatar d-flex align-items-center justify-content-center" style="background: rgba(255,255,255,0.2); font-size: 2rem;">
+                            <i class="bi bi-person-circle"></i>
+                        </div>
+                    <% } %>
+                    
+                    <div class="greeting-text">
+                        <h1 class="welcome-title">
+                            Welcome back <span class="wave-emoji">👋</span>
+                        </h1>
+                        <p class="welcome-subtitle">
+                            Ready to cook something amazing, <strong><%= user.username %></strong>?
+                        </p>
+                    </div>
                 </div>
             </div>
 
@@ -541,6 +740,11 @@
                             <% } else { %>
                                 <% recipes.slice(0, 3).forEach(recipe => { %>
                                     <div class="recipe-card">
+                                        <% if (recipe.user_id !== user.id) { %>
+                                            <button class="recipe-rating-btn" onclick="goToRatings('<%= recipe.id %>')" title="Rate this recipe">
+                                                <i class="bi bi-star-fill"></i>
+                                            </button>
+                                        <% } %>
                                         <img src="https://picsum.photos/300/100?random=<%= recipe.id %>" 
                                              class="recipe-thumbnail" alt="<%= recipe.title %>" 
                                              onerror="this.src='data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzAwIiBoZWlnaHQ9IjEwMCIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj48cmVjdCB3aWR0aD0iMTAwJSIgaGVpZ2h0PSIxMDAlIiBmaWxsPSIjZTllY2VmIi8+PHRleHQgeD0iNTAlIiB5PSI1MCUiIGZvbnQtc2l6ZT0iMTgiIGZpbGw9IiM2NjY2NjYiIHRleHQtYW5jaG9yPSJtaWRkbGUiIGR5PSIuM2VtIiBmb250LWZhbWlseT0ic2Fucy1zZXJpZiI+8J+NsTE8L3RleHQ+PC9zdmc+'; this.onerror=null;">
@@ -619,6 +823,13 @@
     <script>
         // Add smooth scroll behavior
         document.documentElement.style.scrollBehavior = 'smooth';
+        
+        // Function to navigate to recipe ratings section
+        function goToRatings(recipeId) {
+            // Open the recipe page and scroll to ratings section
+            const url = `/recipes/${recipeId}?page=dashboard#ratings-section`;
+            window.open(url, '_blank');
+        }
         
         // Add loading animation to quick action cards
         document.addEventListener('DOMContentLoaded', function() {

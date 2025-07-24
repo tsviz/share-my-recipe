@@ -264,6 +264,15 @@
             opacity: 0.5;
         }
         
+        /* Ensure Bootstrap dropdowns appear above all content */
+        .dropdown-toggle {
+            z-index: 1055 !important;
+        }
+        
+        .dropdown-menu {
+            z-index: 1060 !important;
+        }
+        
         @media (max-width: 768px) {
             .recipe-title {
                 font-size: 2rem;
@@ -446,6 +455,7 @@
         </div>
 
         <% let avgRatingWidth = ((averageRating / 5) * 100).toFixed(2); %>
+        <div id="ratings-section">
         <% if (typeof averageRating !== 'undefined' && averageRating !== null) { %>
           <div class="mb-3">
             <strong>Average Rating: </strong>
@@ -496,7 +506,7 @@
             <% } %>
           </div>
         </div>
-        <% if (isAuthenticated) { %>
+        <% if (isAuthenticated && user.id !== recipe.user_id) { %>
           <div class="card mb-2 shadow-sm border-0" style="font-size:0.93rem;">
             <div class="card-body p-2">
               <form action="/recipes/<%= recipe.id %>/comments" method="POST">
@@ -520,6 +530,7 @@
             </div>
           </div>
         <% } %>
+        </div> <!-- End ratings-section -->
     </div>
 
     <script>
@@ -537,6 +548,33 @@
 
         // Add smooth scroll behavior for better UX
         document.documentElement.style.scrollBehavior = 'smooth';
+        
+        // Handle scrolling to ratings section if hash is present
+        document.addEventListener('DOMContentLoaded', function() {
+            if (window.location.hash === '#ratings-section') {
+                const ratingsSection = document.getElementById('ratings-section');
+                if (ratingsSection) {
+                    setTimeout(() => {
+                        ratingsSection.scrollIntoView({ 
+                            behavior: 'smooth', 
+                            block: 'start',
+                            inline: 'nearest'
+                        });
+                        
+                        // Add a subtle highlight animation to the ratings section
+                        ratingsSection.style.transition = 'all 0.6s ease';
+                        ratingsSection.style.background = 'rgba(102, 126, 234, 0.1)';
+                        ratingsSection.style.borderRadius = '8px';
+                        ratingsSection.style.padding = '1rem';
+                        
+                        setTimeout(() => {
+                            ratingsSection.style.background = 'transparent';
+                            ratingsSection.style.padding = '0';
+                        }, 2000);
+                    }, 500);
+                }
+            }
+        });
         
         // Add click animation to ingredient cards
         document.addEventListener('DOMContentLoaded', function() {

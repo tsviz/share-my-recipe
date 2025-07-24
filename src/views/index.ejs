@@ -24,7 +24,7 @@
                     <div class="h1 text-warning mb-3"><i class="bi bi-heart"></i></div>
                     <h3>Save Favorites</h3>
                     <p>Keep track of recipes you love for easy access.</p>
-                    <a href="<%= isAuthenticated ? '/profile' : '/register' %>" class="btn btn-sm btn-outline-secondary">
+                    <a href="<%= isAuthenticated ? '/favorites' : '/register' %>" class="btn btn-sm btn-outline-secondary">
                         <%= isAuthenticated ? 'View Favorites' : 'Sign Up to Save' %>
                     </a>
                 </div>
