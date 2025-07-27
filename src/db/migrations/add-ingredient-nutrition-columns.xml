@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="add-ingredient-nutrition-columns-20250724" author="copilot">
+        <addColumn tableName="ingredients">
+            <column name="calories_per_100g" type="DECIMAL(8,2)"/>
+            <column name="protein_per_100g" type="DECIMAL(8,2)"/>
+            <column name="fat_per_100g" type="DECIMAL(8,2)"/>
+            <column name="carbs_per_100g" type="DECIMAL(8,2)"/>
+            <column name="fiber_per_100g" type="DECIMAL(8,2)"/>
+            <column name="sugar_per_100g" type="DECIMAL(8,2)"/>
+            <column name="sodium_mg_per_100g" type="DECIMAL(8,2)"/>
+        </addColumn>
+    </changeSet>
+
+</databaseChangeLog>

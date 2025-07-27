@@ -46,7 +46,9 @@
                 <constraints nullable="false"/>
             </column>
         </createTable>
+    </changeSet>
 
+    <changeSet id="1c" author="john_doe">
         <createTable tableName="recipe_ingredients">
             <column name="recipe_id" type="VARCHAR(36)">
                 <constraints nullable="false"/>
@@ -65,7 +67,15 @@
                                  constraintName="fk_recipe_ingredients_ingredient_id"/>
     </changeSet>
 
-    
+    <include file="add-quantity-unit-to-recipe-ingredients.xml" relativeToChangelogFile="true"/>
+
+    <!-- Move add-ingredient-nutrition-columns.xml to after ingredients table creation -->
+
+
+
+    <include file="add-ingredient-nutrition-columns.xml" relativeToChangelogFile="true"/>
+    <include file="load-ingredient-nutrition-data.xml" relativeToChangelogFile="true"/>
+
     <changeSet id="2" author="jane_smith">
         <addColumn tableName="users">
             <column name="created_at" type="TIMESTAMP" defaultValueComputed="CURRENT_TIMESTAMP">
@@ -142,10 +152,6 @@
         </addColumn>
     </changeSet>
 
-    <changeSet id="7" author="system" runOnChange="true">
-        <loadData file="ingredients_data.csv" tableName="ingredients" separator=","/>
-        <loadData file="recipe_ingredients_data.csv" tableName="recipe_ingredients" separator=","/>
-    </changeSet>
 
     <!-- Add instructions column to recipes table -->
     <changeSet id="8" author="system">
@@ -446,4 +452,48 @@
         <comment>Populate glossary so 'vegetables' category expands to all common vegetable ingredients</comment>
         <sqlFile path="populate-glossary-vegetables.sql" relativeToChangelogFile="true"/>
     </changeSet>
+
+    <changeSet id="add-ingredients-data" author="tsviz" runOnChange="true">
+        <loadUpdateData
+            file="src/db/migrations/ingredients_data_updated.csv"
+            tableName="ingredients"
+            separator=","
+            primaryKey="id">
+            <column name="id" type="STRING"/>
+            <column name="name" type="STRING"/>
+            <column name="calories_per_100g" type="NUMERIC"/>
+            <column name="protein_per_100g" type="NUMERIC"/>
+            <column name="fat_per_100g" type="NUMERIC"/>
+            <column name="carbs_per_100g" type="NUMERIC"/>
+        </loadUpdateData>
+    </changeSet>
+
+    <changeSet id="2025-07-26-ingredients-data-nutrition" author="tsviz" runOnChange="true">
+        <comment>Load updated ingredients data with nutrition information</comment>
+        <loadUpdateData
+            file="src/db/migrations/ingredients_data_with_nutrition.csv"
+            tableName="ingredients"
+            separator="," 
+            primaryKey="id">
+            <column name="id" type="STRING"/>
+            <column name="name" type="STRING"/>
+            <column name="calories_per_100g" type="NUMERIC"/>
+            <column name="protein_per_100g" type="NUMERIC"/>
+            <column name="fat_per_100g" type="NUMERIC"/>
+            <column name="carbs_per_100g" type="NUMERIC"/>
+        </loadUpdateData>
+    </changeSet>
+
+    <changeSet id="add-recipe-ingredients-data" author="tsviz" runOnChange="true">
+        <loadUpdateData
+            file="src/db/migrations/recipe_ingredients_data.csv"
+            tableName="recipe_ingredients"
+            separator=","
+            primaryKey="recipe_id,ingredient_id">
+            <column name="recipe_id" type="STRING"/>
+            <column name="ingredient_id" type="STRING"/>
+            <column name="quantity" type="STRING"/>
+        </loadUpdateData>
+    </changeSet>
+
 </databaseChangeLog>

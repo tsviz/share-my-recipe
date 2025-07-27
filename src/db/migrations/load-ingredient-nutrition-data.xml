@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="load-ingredient-nutrition-data" author="copilot" runOnChange="true">
+        <loadUpdateData
+            file="ingredients_data_with_nutrition.csv"
+            tableName="ingredients"
+            primaryKey="id"
+            separator="," 
+            encoding="UTF-8">
+            <column name="id" type="STRING"/>
+            <column name="name" type="STRING"/>
+            <column name="calories_per_100g" type="NUMERIC"/>
+            <column name="protein_per_100g" type="NUMERIC"/>
+            <column name="fat_per_100g" type="NUMERIC"/>
+            <column name="carbs_per_100g" type="NUMERIC"/>
+        </loadUpdateData>
+    </changeSet>
+
+</databaseChangeLog>

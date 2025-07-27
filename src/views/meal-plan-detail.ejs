@@ -69,6 +69,72 @@
     <div id="shoppingListContainer"></div>
   </div>
 </div>
+
+<!-- Edit Meal Plan Item Modal -->
+<div class="modal fade" id="editMealPlanItemModal" tabindex="-1" aria-labelledby="editMealPlanItemModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="editMealPlanItemModalLabel">Edit Meal Plan Item</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <div id="editMealPlanItemError" class="alert alert-danger d-none"></div>
+        <form id="editMealPlanItemForm">
+          <input type="hidden" id="editItemId" name="itemId">
+          <div class="mb-3">
+            <label for="editMealDate" class="form-label">Meal Date</label>
+            <input type="date" class="form-control" id="editMealDate" name="meal_date" required
+                   min="<%= new Date(mealPlan.start_date).toISOString().split('T')[0] %>" 
+                   max="<%= new Date(mealPlan.end_date).toISOString().split('T')[0] %>">
+          </div>
+          <div class="mb-3">
+            <label for="editMealTime" class="form-label">Meal Time</label>
+            <select class="form-select" id="editMealTime" name="meal_time" required>
+              <option value="">Select Meal Time</option>
+              <option value="breakfast">Breakfast</option>
+              <option value="lunch">Lunch</option>
+              <option value="dinner">Dinner</option>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="editRecipeId" class="form-label">Recipe</label>
+            <select class="form-select" id="editRecipeId" name="recipe_id" required>
+              <option value="">Select Recipe</option>
+              <% 
+              let editLastType = '';
+              recipes.forEach(function(recipe) { 
+                // Add optgroup headers when recipe type changes
+                if (recipe.recipe_type !== editLastType) {
+                  if (editLastType !== '') { %>
+                    </optgroup>
+                  <% }
+                  editLastType = recipe.recipe_type; 
+                %>
+                  <optgroup label="<%= recipe.recipe_type %>">
+                <% } %>
+                <option value="<%= recipe.id %>"><%= recipe.title %></option>
+              <% }); 
+              // Close the last optgroup if there were any recipes
+              if (editLastType !== '') { %>
+                </optgroup>
+              <% } %>
+            </select>
+          </div>
+          <div class="mb-3">
+            <label for="editServings" class="form-label">Servings</label>
+            <input type="number" class="form-control" id="editServings" name="servings" min="1" required>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="submit" class="btn btn-primary" onclick="handleEditFormSubmit(event)">Update</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <script>
 // Initialize the recipes data as a global variable to avoid JSON parsing issues
 let recipesData;
@@ -136,12 +202,25 @@ function loadMealPlanItems() {
       return res.json();
     })
     .then(items => {
+      // Debug: Log the API response to inspect calories fields
+      console.log('Meal plan items API response:', items);
+      if (Array.isArray(items)) {
+        items.forEach((item, idx) => {
+          console.log(`Item #${idx + 1}:`, {
+            id: item.id,
+            recipe_id: item.recipe_id,
+            servings: item.servings,
+            calories_per_serving: item.calories_per_serving,
+            total_calories: item.total_calories
+          });
+        });
+      }
       const container = document.getElementById('mealPlanItems');
       if (!items.length) {
         container.innerHTML = '<div class="alert alert-info">No meals planned yet.</div>';
         return;
       }
-      
+      // ...existing code...
       // Group items by date
       const groupedByDate = {};
       items.forEach(item => {
@@ -150,10 +229,8 @@ function loadMealPlanItems() {
         }
         groupedByDate[item.meal_date].push(item);
       });
-      
       // Sort dates
       const sortedDates = Object.keys(groupedByDate).sort();
-      
       // Generate HTML
       let html = '';
       sortedDates.forEach(date => {
@@ -170,6 +247,7 @@ function loadMealPlanItems() {
                     <th>Meal Time</th>
                     <th>Recipe</th>
                     <th>Servings</th>
+                    <th>Calories</th>
                     <th>Actions</th>
                   </tr>
                 </thead>
@@ -179,7 +257,15 @@ function loadMealPlanItems() {
                     <td>${formatMealTime(item.meal_time)}</td>
                     <td>${getRecipeTitle(item.recipe_id)}</td>
                     <td>${item.servings} serving${item.servings > 1 ? 's' : ''}</td>
-                    <td><button class="btn btn-danger btn-sm" onclick="deleteMealPlanItem('${item.id}')">Delete</button></td>
+                    <td>
+                      ${item.calories_per_serving ? `${item.calories_per_serving} kcal/serving` : 'N/A'}
+                      <br>
+                      <span class="text-muted small">${item.total_calories ? `Total: ${item.total_calories} kcal` : ''}</span>
+                    </td>
+                    <td>
+                      <button class="btn btn-warning btn-sm me-1" onclick="editMealPlanItem('${item.id}', '${item.recipe_id}', '${item.meal_date}', '${item.meal_time}', ${item.servings})">Edit</button>
+                      <button class="btn btn-danger btn-sm" onclick="deleteMealPlanItem('${item.id}')">Delete</button>
+                    </td>
                   </tr>
                 `).join('')}
                 </tbody>
@@ -188,7 +274,6 @@ function loadMealPlanItems() {
           </div>
         `;
       });
-      
       container.innerHTML = html;
     })
     .catch(err => {
@@ -288,6 +373,138 @@ function deleteMealPlanItem(id) {
       loadMealPlanItems();
     })
     .catch(err => alert(err.message));
+}
+
+function editMealPlanItem(itemId, recipeId, mealDate, mealTime, servings) {
+  // First, clear the edit form to ensure clean state
+  const editForm = document.getElementById('editMealPlanItemForm');
+  editForm.reset();
+  
+  // Populate the edit modal with current values
+  document.getElementById('editItemId').value = itemId;
+  
+  // Ensure the date is in the correct format (YYYY-MM-DD) for the date input
+  // The mealDate might come in different formats, so we normalize it
+  let formattedDate = mealDate;
+  if (mealDate) {
+    try {
+      // Parse the date and format it as YYYY-MM-DD
+      const dateObj = new Date(mealDate);
+      if (!isNaN(dateObj.getTime())) {
+        formattedDate = dateObj.toISOString().split('T')[0];
+      }
+    } catch (e) {
+      console.warn('Could not parse meal date:', mealDate, e);
+      // Fallback to original date if parsing fails
+      formattedDate = mealDate;
+    }
+  }
+  
+  // Set the form values after reset
+  document.getElementById('editMealDate').value = formattedDate;
+  document.getElementById('editMealTime').value = mealTime;
+  document.getElementById('editRecipeId').value = recipeId;
+  document.getElementById('editServings').value = servings;
+  
+  // Clear any previous error messages
+  const errorBox = document.getElementById('editMealPlanItemError');
+  errorBox.classList.add('d-none');
+  
+  // Debug: Log the values being set
+  console.log('Edit Modal Values:', {
+    itemId,
+    formattedDate,
+    mealTime,
+    recipeId,
+    servings
+  });
+  
+  // Show the modal
+  const modal = new bootstrap.Modal(document.getElementById('editMealPlanItemModal'));
+  modal.show();
+}
+
+// Handle edit form submission - attach this globally
+function handleEditFormSubmit(e) {
+  e.preventDefault();
+  const form = document.getElementById('editMealPlanItemForm');
+  const formData = new FormData(form);
+  const data = Object.fromEntries(formData);
+  const itemId = data.itemId;
+  
+  // Remove itemId from data since it's not part of the update payload
+  delete data.itemId;
+  
+  // Validate form data
+  if (!data.meal_date) {
+    alert('Please select a date');
+    return;
+  }
+  if (!data.meal_time) {
+    alert('Please select a meal time');
+    return;
+  }
+  if (!data.recipe_id) {
+    alert('Please select a recipe');
+    return;
+  }
+  if (!data.servings || parseInt(data.servings) < 1) {
+    data.servings = 1; // Set default serving if invalid
+  }
+  
+  // Show loading state - target the footer button correctly
+  const submitBtn = document.querySelector('#editMealPlanItemModal button[type="submit"]');
+  const originalBtnText = submitBtn.innerHTML;
+  submitBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Updating...';
+  submitBtn.disabled = true;
+  
+  // Make the update request
+  fetch(`/api/meal-plans/${mealPlanId}/items/${itemId}`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    credentials: 'same-origin',
+    body: JSON.stringify(data)
+  })
+    .then(res => {
+      if (!res.ok) {
+        const contentType = res.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+          return res.json().then(errData => {
+            throw new Error(errData.details ? `${errData.error}: ${errData.details}` : errData.error || 'Failed to update item');
+          });
+        } else {
+          throw new Error('Failed to update item');
+        }
+      }
+      return res.json();
+    })
+    .then(() => {
+      // Close the modal
+      const modal = bootstrap.Modal.getInstance(document.getElementById('editMealPlanItemModal'));
+      if (modal) {
+        modal.hide();
+      } else {
+        // Fallback if bootstrap instance is not available
+        document.getElementById('editMealPlanItemModal').style.display = 'none';
+        document.body.classList.remove('modal-open');
+        const backdrop = document.querySelector('.modal-backdrop');
+        if (backdrop) backdrop.remove();
+      }
+      
+      // Reload the meal plan items
+      loadMealPlanItems();
+    })
+    .catch(err => {
+      console.error('Error updating meal plan item:', err);
+      const errorBox = document.getElementById('editMealPlanItemError');
+      errorBox.textContent = err.message;
+      errorBox.classList.remove('d-none');
+    })
+    .finally(() => {
+      // Restore button state
+      submitBtn.innerHTML = originalBtnText;
+      submitBtn.disabled = false;
+    });
 }
 document.getElementById('generateShoppingListBtn').onclick = function() {
   // Show loading state
@@ -553,15 +770,39 @@ const generateShoppingListHandler = document.getElementById('generateShoppingLis
 document.addEventListener('DOMContentLoaded', function() {
   loadMealPlanItems();
   
-  // Set today's date as the default date in the form
+  // Set up edit form submission handler
+  const editForm = document.getElementById('editMealPlanItemForm');
+  if (editForm) {
+    editForm.addEventListener('submit', handleEditFormSubmit);
+  }
+  
+  // Set up edit modal event listeners
+  const editModal = document.getElementById('editMealPlanItemModal');
+  if (editModal) {
+    // Clear form when modal is hidden
+    editModal.addEventListener('hidden.bs.modal', function() {
+      const editForm = document.getElementById('editMealPlanItemForm');
+      editForm.reset();
+      
+      // Clear error messages
+      const errorBox = document.getElementById('editMealPlanItemError');
+      errorBox.classList.add('d-none');
+    });
+  }
+  
+  // Set today's date as the default date ONLY for the "Add Recipe" form
+  // Do NOT interfere with the edit modal's date field
   const today = new Date();
   const year = today.getFullYear();
   const month = String(today.getMonth() + 1).padStart(2, '0');
   const day = String(today.getDate()).padStart(2, '0');
-  const dateInput = document.getElementById('meal_date_input');
-  if (dateInput) {
-    dateInput.value = `${year}-${month}-${day}`;
+  const addFormDateInput = document.getElementById('meal_date_input'); // This is specifically for the Add form
+  if (addFormDateInput) {
+    addFormDateInput.value = `${year}-${month}-${day}`;
   }
+  
+  // Note: We deliberately do NOT set a default date for the edit modal
+  // because it should retain the original date of the meal being edited
 });
 </script>
 <%- include('partials/footer') %>
