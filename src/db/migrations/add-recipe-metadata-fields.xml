@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<databaseChangeLog
+    xmlns="http://www.liquibase.org/xml/ns/dbchangelog"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://www.liquibase.org/xml/ns/dbchangelog http://www.liquibase.org/xml/ns/dbchangelog/dbchangelog-3.8.xsd">
+
+    <changeSet id="2025-11-19-add-recipe-metadata" author="copilot">
+        <comment>Add prep_time, cook_time, servings, and difficulty fields to recipes table for more intuitive recipe management</comment>
+        
+        <addColumn tableName="recipes">
+            <column name="prep_time_minutes" type="INTEGER">
+                <constraints nullable="true"/>
+            </column>
+            <column name="cook_time_minutes" type="INTEGER">
+                <constraints nullable="true"/>
+            </column>
+            <column name="servings" type="INTEGER">
+                <constraints nullable="true"/>
+            </column>
+            <column name="difficulty" type="VARCHAR(20)">
+                <constraints nullable="true"/>
+            </column>
+        </addColumn>
+        
+        <rollback>
+            <dropColumn tableName="recipes" columnName="prep_time_minutes"/>
+            <dropColumn tableName="recipes" columnName="cook_time_minutes"/>
+            <dropColumn tableName="recipes" columnName="servings"/>
+            <dropColumn tableName="recipes" columnName="difficulty"/>
+        </rollback>
+    </changeSet>
+
+</databaseChangeLog>
