@@ -125,9 +125,19 @@ app.post('/login', isNotAuthenticated, (req, res, next) => {
     }
     // Preserve returnTo across session regeneration
     const returnTo = req.session.returnTo;
+    // Handle "Remember Me" functionality
+    const rememberMe = req.body.rememberMe === 'on';
     req.logIn(user, (err: Error) => {
       if (err) { return next(err); }
       req.session.returnTo = returnTo; // Restore after session regeneration
+      
+      // Extend session duration if "Remember Me" is checked
+      if (rememberMe) {
+        req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30; // 30 days
+      } else {
+        req.session.cookie.maxAge = 1000 * 60 * 60 * 24; // 1 day
+      }
+      
       console.log('LOGIN REDIRECT: req.sessionID =', req.sessionID, 'req.session.returnTo =', req.session.returnTo);
       // Always redirect to dashboard if logging in from homepage or no returnTo
       let redirectTo: string = '/dashboard';
