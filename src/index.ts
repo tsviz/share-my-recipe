@@ -25,6 +25,10 @@ import { mealPlanItemRoutes } from './routes/mealPlanItemRoutes';
 import { shoppingListRoutes } from './routes/shoppingListRoutes';
 import { recipeCommentsRoutes } from './routes/recipeCommentsRoutes';
 
+// Session duration constants
+const SESSION_DURATION_STANDARD = 1000 * 60 * 60 * 24; // 1 day
+const SESSION_DURATION_REMEMBER_ME = 1000 * 60 * 60 * 24 * 30; // 30 days
+
 const app = express();
 const port = 3000;
 
@@ -54,7 +58,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    maxAge: 1000 * 60 * 60 * 24, // 1 day
+    maxAge: SESSION_DURATION_STANDARD,
     sameSite: false, // allow all for debug
     secure: false    // do not require HTTPS for localhost
   }
@@ -133,9 +137,9 @@ app.post('/login', isNotAuthenticated, (req, res, next) => {
       
       // Extend session duration if "Remember Me" is checked
       if (rememberMe) {
-        req.session.cookie.maxAge = 1000 * 60 * 60 * 24 * 30; // 30 days
+        req.session.cookie.maxAge = SESSION_DURATION_REMEMBER_ME;
       } else {
-        req.session.cookie.maxAge = 1000 * 60 * 60 * 24; // 1 day
+        req.session.cookie.maxAge = SESSION_DURATION_STANDARD;
       }
       
       console.log('LOGIN REDIRECT: req.sessionID =', req.sessionID, 'req.session.returnTo =', req.session.returnTo);

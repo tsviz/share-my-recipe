@@ -241,7 +241,7 @@
                                     Remember me
                                 </label>
                             </div>
-                            <a href="#" class="forgot-password" onclick="alert('Password reset feature coming soon!'); return false;">Forgot password?</a>
+                            <a href="#" class="forgot-password" id="forgotPasswordLink">Forgot password?</a>
                         </div>
                         
                         <div class="d-grid gap-2 mt-4">
@@ -276,27 +276,38 @@
         const togglePassword = document.getElementById('togglePassword');
         const password = document.getElementById('password');
         
-        togglePassword.addEventListener('click', function() {
-            const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
-            password.setAttribute('type', type);
+        if (togglePassword && password) {
+            togglePassword.addEventListener('click', function() {
+                const type = password.getAttribute('type') === 'password' ? 'text' : 'password';
+                password.setAttribute('type', type);
+                
+                // Toggle icon
+                if (type === 'text') {
+                    this.classList.remove('bi-eye-fill');
+                    this.classList.add('bi-eye-slash-fill');
+                } else {
+                    this.classList.remove('bi-eye-slash-fill');
+                    this.classList.add('bi-eye-fill');
+                }
+            });
             
-            // Toggle icon
-            if (type === 'text') {
-                this.classList.remove('bi-eye-fill');
-                this.classList.add('bi-eye-slash-fill');
-            } else {
-                this.classList.remove('bi-eye-slash-fill');
-                this.classList.add('bi-eye-fill');
-            }
-        });
+            // Keyboard accessibility for password toggle
+            togglePassword.addEventListener('keypress', function(e) {
+                if (e.key === 'Enter' || e.key === ' ') {
+                    e.preventDefault();
+                    this.click();
+                }
+            });
+        }
         
-        // Keyboard accessibility for password toggle
-        togglePassword.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
+        // Forgot password handler
+        const forgotPasswordLink = document.getElementById('forgotPasswordLink');
+        if (forgotPasswordLink) {
+            forgotPasswordLink.addEventListener('click', function(e) {
                 e.preventDefault();
-                this.click();
-            }
-        });
+                alert('Password reset feature coming soon!');
+            });
+        }
         
         // Form submission with loading state
         const loginForm = document.getElementById('loginForm');
@@ -304,44 +315,62 @@
         const loginBtnText = document.getElementById('loginBtnText');
         const loginSpinner = document.getElementById('loginSpinner');
         
-        loginForm.addEventListener('submit', function(e) {
-            // Show loading state
-            loginBtn.disabled = true;
-            loginBtnText.textContent = 'Logging in...';
-            loginSpinner.style.display = 'inline-block';
-        });
+        if (loginForm && loginBtn && loginBtnText && loginSpinner) {
+            loginForm.addEventListener('submit', function(e) {
+                // Validate before showing loading state
+                if (!loginForm.checkValidity()) {
+                    return;
+                }
+                
+                // Show loading state
+                loginBtn.disabled = true;
+                loginBtnText.textContent = 'Logging in...';
+                loginSpinner.style.display = 'inline-block';
+                
+                // Reset after timeout as fallback (in case server doesn't respond)
+                setTimeout(function() {
+                    loginBtn.disabled = false;
+                    loginBtnText.textContent = 'Login';
+                    loginSpinner.style.display = 'none';
+                }, 10000); // 10 second timeout
+            });
+        }
         
         // Client-side validation feedback
         const emailInput = document.getElementById('email');
         const passwordInput = document.getElementById('password');
         
-        emailInput.addEventListener('blur', function() {
-            if (this.value && !this.validity.valid) {
-                this.classList.add('is-invalid');
-            } else {
-                this.classList.remove('is-invalid');
-            }
-        });
+        if (emailInput) {
+            emailInput.addEventListener('blur', function() {
+                if (this.value && !this.validity.valid) {
+                    this.classList.add('is-invalid');
+                } else {
+                    this.classList.remove('is-invalid');
+                }
+            });
+            
+            emailInput.addEventListener('input', function() {
+                if (this.classList.contains('is-invalid') && this.validity.valid) {
+                    this.classList.remove('is-invalid');
+                }
+            });
+        }
         
-        emailInput.addEventListener('input', function() {
-            if (this.classList.contains('is-invalid') && this.validity.valid) {
-                this.classList.remove('is-invalid');
-            }
-        });
-        
-        passwordInput.addEventListener('blur', function() {
-            if (this.value && this.value.length < 8) {
-                this.classList.add('is-invalid');
-            } else {
-                this.classList.remove('is-invalid');
-            }
-        });
-        
-        passwordInput.addEventListener('input', function() {
-            if (this.classList.contains('is-invalid') && this.value.length >= 8) {
-                this.classList.remove('is-invalid');
-            }
-        });
+        if (passwordInput) {
+            passwordInput.addEventListener('blur', function() {
+                if (this.value && this.value.length < 8) {
+                    this.classList.add('is-invalid');
+                } else {
+                    this.classList.remove('is-invalid');
+                }
+            });
+            
+            passwordInput.addEventListener('input', function() {
+                if (this.classList.contains('is-invalid') && this.value.length >= 8) {
+                    this.classList.remove('is-invalid');
+                }
+            });
+        }
     </script>
 </body>
 </html>
