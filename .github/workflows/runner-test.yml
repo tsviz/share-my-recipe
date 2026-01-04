@@ -5,7 +5,7 @@ on:
 
 jobs:
   test-runner:
-    runs-on: [tsvi-macbook]
+    runs-on: self-hosted
 
     steps:
     - name: Checkout code
