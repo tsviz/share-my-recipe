@@ -25,6 +25,10 @@ import { mealPlanItemRoutes } from './routes/mealPlanItemRoutes';
 import { shoppingListRoutes } from './routes/shoppingListRoutes';
 import { recipeCommentsRoutes } from './routes/recipeCommentsRoutes';
 
+// Session duration constants
+const SESSION_DURATION_STANDARD = 1000 * 60 * 60 * 24; // 1 day
+const SESSION_DURATION_REMEMBER_ME = 1000 * 60 * 60 * 24 * 30; // 30 days
+
 const app = express();
 const port = 3000;
 
@@ -54,7 +58,7 @@ app.use(session({
   resave: false,
   saveUninitialized: false,
   cookie: {
-    maxAge: 1000 * 60 * 60 * 24, // 1 day
+    maxAge: SESSION_DURATION_STANDARD,
     sameSite: false, // allow all for debug
     secure: false    // do not require HTTPS for localhost
   }
@@ -125,9 +129,19 @@ app.post('/login', isNotAuthenticated, (req, res, next) => {
     }
     // Preserve returnTo across session regeneration
     const returnTo = req.session.returnTo;
+    // Handle "Remember Me" functionality
+    const rememberMe = req.body.rememberMe === 'on';
     req.logIn(user, (err: Error) => {
       if (err) { return next(err); }
       req.session.returnTo = returnTo; // Restore after session regeneration
+      
+      // Extend session duration if "Remember Me" is checked
+      if (rememberMe) {
+        req.session.cookie.maxAge = SESSION_DURATION_REMEMBER_ME;
+      } else {
+        req.session.cookie.maxAge = SESSION_DURATION_STANDARD;
+      }
+      
       console.log('LOGIN REDIRECT: req.sessionID =', req.sessionID, 'req.session.returnTo =', req.session.returnTo);
       // Always redirect to dashboard if logging in from homepage or no returnTo
       let redirectTo: string = '/dashboard';
