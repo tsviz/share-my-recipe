@@ -169,6 +169,24 @@
             font-size: 1.5rem;
             text-shadow: 0 1px 4px #fff, 0 0 6px #ffb6c1;
         }
+        
+        /* Recipe metadata badges styling */
+        .recipe-metadata {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px;
+            font-size: 0.7rem;
+        }
+        
+        .recipe-metadata .badge {
+            padding: 3px 8px;
+            font-size: 0.7rem;
+            font-weight: 500;
+        }
+        
+        .recipe-metadata .badge i {
+            font-size: 0.65rem;
+        }
     </style>
     <script>
         function flipCard(idx) {
@@ -286,9 +304,25 @@
                         <div class="card-body d-flex flex-column">
                             <h5 class="card-title"><%= recipe.title %></h5>
                             <p class="card-text"><%= recipe.description ? recipe.description.substring(0, 60) + '...' : 'No description provided.' %></p>
-                            <% if (recipe.cuisine) { %>
-                                <span class="badge bg-info text-dark mb-2"><%= recipe.cuisine %></span>
-                            <% } %>
+                            
+                            <!-- Recipe Metadata -->
+                            <div class="recipe-metadata mb-2">
+                                <% if (recipe.cuisine) { %>
+                                    <span class="badge bg-info text-dark mb-1"><i class="bi bi-geo-alt"></i> <%= recipe.cuisine %></span>
+                                <% } %>
+                                <% if (recipe.difficulty) { %>
+                                    <span class="badge bg-secondary mb-1"><i class="bi bi-signal"></i> <%= recipe.difficulty %></span>
+                                <% } %>
+                                <% if (recipe.prep_time_minutes || recipe.cook_time_minutes) { %>
+                                    <% const totalTime = (recipe.prep_time_minutes || 0) + (recipe.cook_time_minutes || 0); %>
+                                    <% if (totalTime > 0) { %>
+                                        <span class="badge bg-warning text-dark mb-1"><i class="bi bi-clock"></i> <%= totalTime %> min</span>
+                                    <% } %>
+                                <% } %>
+                                <% if (recipe.servings) { %>
+                                    <span class="badge bg-success mb-1"><i class="bi bi-people"></i> <%= recipe.servings %></span>
+                                <% } %>
+                            </div>
                             
                             <!-- Small rating display -->
                             <% if (recipe.average_rating && recipe.average_rating > 0) { %>

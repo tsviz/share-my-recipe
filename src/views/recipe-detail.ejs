@@ -319,12 +319,26 @@
                                     <i class="bi bi-geo-alt me-2"></i><%= recipe.cuisine %>
                                 </span>
                             <% } %>
-                            <span class="recipe-badge">
-                                <i class="bi bi-clock me-2"></i>30 mins
-                            </span>
-                            <span class="recipe-badge">
-                                <i class="bi bi-star me-2"></i>Easy
-                            </span>
+                            <% if (recipe.prep_time_minutes) { %>
+                                <span class="recipe-badge">
+                                    <i class="bi bi-hourglass-split me-2"></i>Prep: <%= recipe.prep_time_minutes %> min
+                                </span>
+                            <% } %>
+                            <% if (recipe.cook_time_minutes) { %>
+                                <span class="recipe-badge">
+                                    <i class="bi bi-fire me-2"></i>Cook: <%= recipe.cook_time_minutes %> min
+                                </span>
+                            <% } %>
+                            <% if (recipe.servings) { %>
+                                <span class="recipe-badge">
+                                    <i class="bi bi-people me-2"></i><%= recipe.servings %> servings
+                                </span>
+                            <% } %>
+                            <% if (recipe.difficulty) { %>
+                                <span class="recipe-badge">
+                                    <i class="bi bi-signal me-2"></i><%= recipe.difficulty %>
+                                </span>
+                            <% } %>
                         </div>
                     </div>
                     

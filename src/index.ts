@@ -627,12 +627,23 @@ app.get('/activity', isAuthenticated, async (req, res) => {
 
 // Route to add a recipe
 app.post('/recipes', isAuthenticated, async (req, res) => {
-  const { title, description, category_id, instructions, cuisine } = req.body;
+  const { title, description, category_id, instructions, cuisine, prep_time_minutes, cook_time_minutes, servings, difficulty } = req.body;
   const userId = (req.user as any).id;
   try {
     await pool.query(
-      'INSERT INTO recipes (id, title, description, user_id, category_id, instructions, cuisine) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6)',
-      [title, description, userId, category_id || null, instructions, cuisine || null]
+      'INSERT INTO recipes (id, title, description, user_id, category_id, instructions, cuisine, prep_time_minutes, cook_time_minutes, servings, difficulty) VALUES (gen_random_uuid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)',
+      [
+        title, 
+        description, 
+        userId, 
+        category_id || null, 
+        instructions, 
+        cuisine || null,
+        prep_time_minutes ? parseInt(prep_time_minutes) : null,
+        cook_time_minutes ? parseInt(cook_time_minutes) : null,
+        servings ? parseInt(servings) : null,
+        difficulty || null
+      ]
     );
     req.flash('success', 'Recipe created successfully!');
     return res.redirect('/dashboard');
@@ -858,11 +869,23 @@ app.get('/recipes/edit/:id', isAuthenticated, async (req, res) => {
 app.post('/recipes/edit/:id', isAuthenticated, async (req, res) => {
   const recipeId = req.params.id;
   const userId = (req.user as any).id;
-  const { title, description, category_id, instructions, cuisine } = req.body;
+  const { title, description, category_id, instructions, cuisine, prep_time_minutes, cook_time_minutes, servings, difficulty } = req.body;
   try {
     await pool.query(
-      'UPDATE recipes SET title = $1, description = $2, category_id = $3, instructions = $4, cuisine = $5 WHERE id = $6 AND user_id = $7',
-      [title, description, category_id || null, instructions, cuisine || null, recipeId, userId]
+      'UPDATE recipes SET title = $1, description = $2, category_id = $3, instructions = $4, cuisine = $5, prep_time_minutes = $6, cook_time_minutes = $7, servings = $8, difficulty = $9 WHERE id = $10 AND user_id = $11',
+      [
+        title, 
+        description, 
+        category_id || null, 
+        instructions, 
+        cuisine || null,
+        prep_time_minutes ? parseInt(prep_time_minutes) : null,
+        cook_time_minutes ? parseInt(cook_time_minutes) : null,
+        servings ? parseInt(servings) : null,
+        difficulty || null,
+        recipeId, 
+        userId
+      ]
     );
     req.flash('success', 'Recipe updated successfully!');
     res.redirect('/dashboard');

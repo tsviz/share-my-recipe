@@ -508,4 +508,6 @@
         </rollback>
     </changeSet>
 
+    <include file="add-recipe-metadata-fields.xml" relativeToChangelogFile="true"/>
+
 </databaseChangeLog>
